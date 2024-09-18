@@ -1,0 +1,59 @@
+------------------------------------
+- Load the instruction file into the memory
+    - ??
+
+- what all datatypes to include? - int, char (char==1 byte number)
+    - Ans: int, char (char = a 1 byte number)
+
+- Signed numbers; Sign extension; instructions like slt, sltu, addi, lh, lhu
+    - Idea1: store unsigned numbers; if need arises, convert using b = a-(2**(len(str)))
+        - But lhu, lh, lbu, lb instructions fail
+    - Idea2: store a byte at each index of register or memory array, dtype=str
+        - solves half word fetching, signed-unsigned issue, implement sign-extension directly
+
+- Illegal offset
+    - Alignment Restriction ("In MIPS, words must start at addresses that are multiples of 4.")
+    - Big-endian Byte addressing  (address of leftmost byte == address of the word)
+    - Ans: Implement check: valid word address == multiple of 4 (0,4,...)
+
+- Stack and Heap (data allocation in memory)
+    - ??
+
+- Procedures 
+    - ??
+    - Activation Record
+    - Spilling Registers
+    - Stack pointer
+    - saving & restoring regs
+    - local variables (arrays)
+
+- Program Counter
+    - a separate register
+    - PC = addr of current instruction
+
+- Addressing Modes (PC relative, Pseudo-direct)
+    - "Like most recent computers, MIPS uses PC-relative addressing for all conditional branches, because the destination of these instructions is likely to be close to the branch."
+    - beq, bne => PC-relative addressing
+    - j, jal => pseudodirect addressing
+
+- Memory-mapped I/O 
+    - "The output shall be generated using a memory mapped IO and displayed on the screen."
+    - Ans: store output in an output register, then somehow use it to display
+
+- Pipelining (next stage)
+    - ??
+
+
+------------------------------------
+IMPLEMENTATION-RELATED:
+- 2's complement followed? (see code for addi in execution.py)
+- Remove extra step of "ADD" (use direct funct -> operation)
+- Throw error for illegal offsets
+
+------------------------------------
+Extra Features:
+- Cycle-by-cycle analysis of the simulator’s execution, with examples.
+- Access Control in Memory Management Module: 
+    Managing read/write permissions, preventing conflicts during the execution of simultaneous instructions in a pipelined architecture.
+- Memory: Maintaining register data and status flags
+- Debugger
