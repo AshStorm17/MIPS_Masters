@@ -14,7 +14,6 @@ def signedBin(num):
     return ans
 # ---------------------------
 
-# ---------------------------
 class ALU:
     def __init__(self):
         pass
@@ -49,6 +48,10 @@ class ALU:
             case "101010": #slt 
                 # compare and return 1 or 0
                 return int(signedVal(opr1) < signedVal(opr2))
+            case "101011": # sltu
+                return int(int(opr1,2) < int(opr2,2))
+            case "100111": # nor
+                return ~(signedVal(opr1) | signedVal(opr2))
         
         return ans
 
@@ -67,7 +70,7 @@ class ALU:
         """
         COAHP: For branch equal, the ALU must perform a subtraction.
         """
-        return bin1==bin2 # directly compare the two 32-bit binary strings
+        return bin1-bin2==0 # directly compare the two 32-bit binary strings
 
 
 # --------------------------------------------
