@@ -40,7 +40,7 @@ def signedVal(binStr):
 
 def signedBin(num):
     # return 2's complement binary string of length len
-    ans=""
+    ans=""  
     if(num<0):
         ans = bin(num % (1<<32))[2:]
     else:

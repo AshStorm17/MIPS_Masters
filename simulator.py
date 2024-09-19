@@ -26,7 +26,7 @@ parse_mips_file(file_path,memory)
 
 print(memory.data)
 # Step 3 ---------------------------------------
-PC = memory.data[0] 
+PC = 0 
 IR = ""
 
 # Step 4 ---------------------------------------
