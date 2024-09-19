@@ -9,7 +9,7 @@ class Registers:
     def read(self, number):
         return self.reg[number]
 # --------------------------------------------
-# memory class
+# Memory class
     # byte addressing
     # separate spaces for instructions, data, I/O
 class Memory:
@@ -23,6 +23,8 @@ class Memory:
         return self.data[addr]
     
     # function for I/O access
+    def fillOutput(self):
+        pass
 
 # -------------------------------------------
 # ALU class and operations
@@ -30,13 +32,13 @@ def signedVal(binStr):
     isSigned = int(binStr[0]=="1")
     return int(binStr, 2) - isSigned*(2**len(binStr))
 
-def signedBin(num, len):
+def signedBin(num):
     # return 2's complement binary string of length len
     ans=""
     if(num<0):
-        pass
+        ans = bin(num % (1<<32))[2:]
     else:
-        pass
+        ans = format(num, '032b')
     return ans
 # ---------------------------
 class ALU:
@@ -51,19 +53,17 @@ class ALU:
         ans = ""
         match operation:
             case "100000": # add
-                # signed or unsigned?
-                num1 = signedVal(opr1)
-                num2 = signedVal(opr2)
-                ans = signedBin(num1 + num2, 32)
+                ans = signedBin(signedVal(opr1) + signedVal(opr2))
                 pass
             case "100010": # sub
-                pass
+                ans = signedBin(signedVal(opr1) - signedVal(opr2))
             case "100100": # and
-                pass
+                ans = signedVal(opr1) & signedVal(opr2)
             case "100101": # or
-                pass
-            case "101010": #slt
-                pass
+                ans = signedVal(opr1) | signedVal(opr2)
+            case "101010": #slt 
+                # compare and return 1 or 0
+                return int(signedVal(opr1) < signedVal(opr2))
         
         return ans
 
