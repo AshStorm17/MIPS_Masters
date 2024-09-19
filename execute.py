@@ -11,10 +11,9 @@ class Execute:
                 # handle R-type inst (e.g. using ALU)
                 # op, rs, rt, rd, shamt, funct
                 """
-                    add, sub,       (add=100000, sub=100010)
-                    and, or, nor,   (and=100100, or=100101, nor=100111) 
+                    nor,            (nor=100111) 
                     sll, srl,       (sll=000000, srl=000010)
-                    slt, sltu,      (slt=101010, sltu=101011)
+                    sltu,           (sltu=101011)
                     jr              (jr=001000)
                 """
                 opr1 = self.registers.reg[inst.rs]
