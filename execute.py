@@ -16,9 +16,14 @@ class Execute:
                     sltu,           (sltu=101011)
                     jr              (jr=001000)
                 """
-                opr1 = self.registers.reg[inst.rs]
-                opr2 = self.registers.reg[inst.rt]
-                ans = self.alu.alu_arith(inst.funct, opr1, opr2)
+                if inst.rs == 0:
+                    opr1 = self.registers.reg[inst.rt]
+                    ans = self.alu.alu_shift(inst.funct, opr1, inst.shamt)
+                    self.registers.reg[inst.rd] = ans
+                else:
+                    opr1 = self.registers.reg[inst.rs]
+                    opr2 = self.registers.reg[inst.rt]
+                    ans = self.alu.alu_arith(inst.funct, opr1, opr2)
 
                 pass
             case 2|3:
