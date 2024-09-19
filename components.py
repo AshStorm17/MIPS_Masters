@@ -14,10 +14,16 @@ class Registers:
     # separate spaces for instructions, data, I/O
 class Memory:
     def __init__(self):
-        self.data = [""]*4*1024 # 1024 words
+        self.data = ["00000000"]*4*1024 # 1024 words
 
     def store(self, addr, value):
         self.data[addr] = value
+
+    def store32bit_instr(self,instr,curraddr):
+        self.data[curraddr]=instr[:8]
+        self.data[curraddr+1]=instr[8:16]
+        self.data[curraddr+2]=instr[16:24]
+        self.data[curraddr+3]=instr[24:32]
 
     def load(self, addr):
         return self.data[addr]

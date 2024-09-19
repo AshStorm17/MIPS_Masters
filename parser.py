@@ -29,20 +29,21 @@ def parse_instruction(instruction):
         return parse_i_type(instruction)
     
 
-def parse_mips_file(file_path):
-    instructions=[]
+def parse_mips_file(file_path,Memory):
+    addr=0
     try:    
         with open(file_path,'r') as f:
             for line in f:
                 instruction=line.strip()
                 if len(instruction) == 32 and all(bit in '01' for bit in instruction):
-                        instructions.append(instruction)
+                    Memory.store32bit_instr(instruction,addr)
+                    addr+=4
     except FileNotFoundError:
         print(f"Error: The file '{file_path}' was not found.")
     except Exception as e:
         print(f"An error occurred: {e}")
 
-    return instructions    
+    
 
 
 if __name__=="__main__":

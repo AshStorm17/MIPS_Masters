@@ -22,8 +22,9 @@ execute = Execute(memory, registers, alu)
 
 # Step 2 ---------------------------------------
 # @ BG
-all_instructions=parse_mips_file(file_path)
+parse_mips_file(file_path,memory)
 
+print(memory.data)
 # Step 3 ---------------------------------------
 PC = memory.data[0] 
 IR = ""
