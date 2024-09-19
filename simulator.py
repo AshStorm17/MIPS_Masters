@@ -36,7 +36,7 @@ while memory.data[PC]!=0:
     # Step 4.1: 
     for i in range(4):
         IR += memory.data[PC+i] 
-    
+    PC += 4 
     # Step 4.2 (decode)
     match int(IR[0:7], 2):
         case 0:
@@ -55,6 +55,6 @@ while memory.data[PC]!=0:
     
     # Reset IR and move PC to the next instruction
     IR = ""    
-    PC += 4 
+    
 
 # ---------------------------------------
