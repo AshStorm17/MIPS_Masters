@@ -48,7 +48,7 @@ while memory.data[PC]!=0:
     # Step 4.3 (execute)
     execute.executeInst(inst)
     
-
+    
     # Reset IR and move PC to the next instruction
     IR = ""    
     PC += 4 
