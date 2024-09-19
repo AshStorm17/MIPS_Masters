@@ -8,7 +8,9 @@
     3. Pass to the execution engine
 """
 
-from components import Memory, ALU, Registers
+from components.registers import Registers
+from components.alu import ALU
+from components.memory import Memory
 from instructions import RtypeInst, ItypeInst, JtypeInst, giveFields
 from execute import Execute
 from parser import *

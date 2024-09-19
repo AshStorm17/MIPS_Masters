@@ -1,37 +1,3 @@
-# --------------------------------------------
-class Registers:
-    def __init__(self):
-        self.reg = [""] * 32 # 32 registers
-
-    def write(self, number, value):
-        self.reg[number] = value
-    
-    def read(self, number):
-        return self.reg[number]
-# --------------------------------------------
-# Memory class
-    # byte addressing
-    # separate spaces for instructions, data, I/O
-class Memory:
-    def __init__(self):
-        self.data = ["00000000"]*4*1024 # 1024 words
-
-    def store(self, addr, value):
-        self.data[addr] = value
-
-    def store32bit_instr(self,instr,curraddr):
-        self.data[curraddr]=instr[:8]
-        self.data[curraddr+1]=instr[8:16]
-        self.data[curraddr+2]=instr[16:24]
-        self.data[curraddr+3]=instr[24:32]
-
-    def load(self, addr):
-        return self.data[addr]
-    
-    # function for I/O access
-    def fillOutput(self):
-        pass
-
 # -------------------------------------------
 # ALU class and operations
 def signedVal(binStr):
@@ -47,10 +13,23 @@ def signedBin(num):
         ans = format(num, '032b')
     return ans
 # ---------------------------
+
+# ---------------------------
 class ALU:
     def __init__(self):
         pass
 
+    def alu_shift(self, operation, opr1, shamt):
+        match operation:
+            case "000000":
+                return format(int(opr1, 2) << shamt, '032b')
+            case "000010":
+                if opr1 < 0:
+                    opr1 = opr1 + (1 << 32)
+                return format(int(opr1, 2) >> shamt, '032b')
+            case "000011":
+                return format(int(opr1, 2) >> shamt, '032b')
+    
     def alu_arith(self, operation, opr1, opr2):
         """
         COAHP: For the R-type instructions, the ALU needs to perform one of the five actions (AND, OR, subtract, add, or set on less than
