@@ -11,7 +11,9 @@
 from components import Memory, ALU, Registers
 from instructions import RtypeInst, ItypeInst, JtypeInst, giveFields
 from execute import Execute
+from parser import *
 
+file_path="assets\\binary.txt"
 # Step 1 ---------------------------------------
 memory = Memory()
 alu = ALU()
@@ -20,8 +22,7 @@ execute = Execute(memory, registers, alu)
 
 # Step 2 ---------------------------------------
 # @ BG
-
-
+all_instructions=parse_mips_file(file_path)
 
 # Step 3 ---------------------------------------
 PC = memory.data[0] 
