@@ -21,13 +21,9 @@ class Execute:
     def executeInst(self, inst):
         match inst.type:
             case 0:
-                # handle R-type inst (e.g. using ALU)
-                # op, rs, rt, rd, shamt, funct
+                # handle R-type inst
                 """
-                    nor,            (nor=100111) 
-                    sll, srl,       (sll=000000, srl=000010)
-                    sltu,           (sltu=101011)
-                    jr              (jr=001000)
+                    jr (jr=001000)
                 """
                 if inst.rs == 0:
                     opr1 = self.registers.reg[inst.rt]
@@ -46,16 +42,40 @@ class Execute:
             case _:
                 # handle I-type inst
                 """
-                    addi,
                     beq, bne,
-                    slti, sltiu
-                    lw, sw,
-                    lh, lhu,
-                    lb, lbu,
-                    sh, sb,
-                    lui, 
-                    ori, andi,
                 """
+                match inst.op[0:3]:
+                    case "100": # load instructions
+                        # op, rs, rt, offset
+                        addr = int(self.alu.giveAddr(inst.rs, inst.addrORimm),2)
+                        op2ndHalf = int(inst.op[3:6],2)
+                        i_range = op2ndHalf % 4
+                        loadedStr = ""
+                        for i in range(i_range):
+                            loadedStr += self.memory.load(addr+i)
+                        regNo = int(inst.rt, 2)
+                        signExtAmt = (4-(i_range+1)) * 8
+                        # 0,1,3 => signed, # 4,5 => unsigned
+                        if(op2ndHalf<4):
+                            loadedStr = (loadedStr[0]*signExtAmt) + loadedStr
+                        else:
+                            loadedStr = ("0"*signExtAmt) + loadedStr
+                        self.registers.write(regNo, loadedStr)
+
+                    case "101": # store instructions
+                        addr = int(self.alu.giveAddr(inst.rs, inst.addrORimm),2)
+                        op2ndHalf = int(inst.op[3:6],2)
+                        i_range = op2ndHalf
+                        regNo = int(inst.rt, 2)
+                        storeStr = self.registers.read(regNo)
+                        for i in range(24,24-(op2ndHalf*8)-1,-8):
+                            self.memory.store(storeStr[i:i+8],addr+(24-i)/8)
+
+                    
+
+                        
+
+
                 match inst.op:
                     case 0b001000:
                         # addi
@@ -83,11 +103,11 @@ class Execute:
                         src = self.registers.reg[inst.rs]
                         ans = src | inst.immediate
                         self.registers.reg[inst.rt] = ans
-                    case 0b001110:
-                        # xori
-                        src = self.registers.reg[inst.rs]
-                        ans = src ^ inst.immediate
-                        self.registers.reg[inst.rt] = ans
+                    # case 0b001110:
+                    #     # xori
+                    #     src = self.registers.reg[inst.rs]
+                    #     ans = src ^ inst.immediate
+                    #     self.registers.reg[inst.rt] = ans
                     case 0b001111:
                         # lui
                         ans = inst.immediate << 16
