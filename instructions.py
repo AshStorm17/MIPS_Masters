@@ -9,6 +9,7 @@ class RtypeInst:
         self.shamt = shamt 
         self.funct = funct 
 
+# ---------------------------
 class ItypeInst:
     def __init__(self, op, rs, rt, addrORimm):
         self.type = 1
@@ -17,11 +18,21 @@ class ItypeInst:
         self.rt = rt
         self.addrORimm = addrORimm
 
+    def relativeAddr(self, PC):
+        pass
+        
+# ---------------------------
+
 class JtypeInst:
     def __init__(self, op, address):
         self.type = 2
         self.op = op
         self.address = address
+
+    def jumpAddr(self, PC): 
+        PC_plus_4 = int(PC,2) + 4               # PC + 4
+        PC4 = format(PC_plus_4, '032b')         # returns 32-bit (unsigned) binary string
+        return PC4[0:4] + self.address + "00"   # pseudodirect addressing
 
 # ---------------------------------------------------------
 def giveFields(inst, type):
