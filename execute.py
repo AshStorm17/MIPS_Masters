@@ -1,16 +1,3 @@
-def signedVal(binStr):
-    isSigned = int(binStr[0]=="1")
-    return int(binStr, 2) - isSigned*(2**len(binStr))
-
-def signedBin(num):
-    # return 2's complement binary string of length len
-    ans=""
-    if(num<0):
-        ans = bin(num % (1<<32))[2:]
-    else:
-        ans = format(num, '032b')
-    return ans
-
 class Execute:
     def __init__(self, memory, registers, alu):
         self.memory = memory
@@ -25,14 +12,18 @@ class Execute:
                 """
                     jr (jr=001000)
                 """
-                if inst.rs == 0:
-                    opr1 = self.registers.reg[inst.rt]
+                src_reg = int(inst.rs, 2)
+                temp_reg = int(inst.rt, 2)
+
+                if inst.funct[0:3] == "000":
+                    opr1 = self.registers.read(src_reg)
                     ans = self.alu.alu_shift(inst.funct, opr1, inst.shamt)
-                    self.registers.reg[inst.rd] = ans
                 else:
-                    opr1 = self.registers.reg[inst.rs]
-                    opr2 = self.registers.reg[inst.rt]
+                    opr1 = self.registers.read(src_reg)
+                    opr2 = self.registers.read(temp_reg)
                     ans = self.alu.alu_arith(inst.funct, opr1, opr2)
+                dst_reg = int(inst.rd, 2)
+                self.registers.write(dst_reg, ans)
             case 2|3:
                 # handle J-type inst 
                 """
@@ -71,47 +62,10 @@ class Execute:
                         for i in range(24,24-(op2ndHalf*8)-1,-8):
                             self.memory.store(storeStr[i:i+8],addr+(24-i)/8)
 
-                    
-
-                        
-
-
-                match inst.op:
-                    case 0b001000:
-                        # addi
-                        src = self.registers.reg[inst.rs]
-                        ans = src + inst.immediate
-                        self.registers.reg[inst.rt] = ans
-                    case 0b001010:
-                        # slti
-                        src = self.registers.reg[inst.rs]
-                        imm = signedVal(inst.immediate)
-                        ans = 1 if src < imm else 0
-                        self.registers.reg[inst.rt] = ans
-                    case 0b001011:
-                        # sltiu
-                        src = self.registers.reg[inst.rs]
-                        ans = 1 if src < inst.immediate else 0
-                        self.registers.reg[inst.rt] = ans
-                    case 0b001100:
-                        # andi
-                        src = self.registers.reg[inst.rs]
-                        ans = src & inst.immediate
-                        self.registers.reg[inst.rt] = ans
-                    case 0b001101:
-                        # ori
-                        src = self.registers.reg[inst.rs]
-                        ans = src | inst.immediate
-                        self.registers.reg[inst.rt] = ans
-                    # case 0b001110:
-                    #     # xori
-                    #     src = self.registers.reg[inst.rs]
-                    #     ans = src ^ inst.immediate
-                    #     self.registers.reg[inst.rt] = ans
-                    case 0b001111:
-                        # lui
-                        ans = inst.immediate << 16
-                        self.registers.reg[inst.rt] = ans
-                pass
-
+                    case "001": # remaining IType
+                        src_reg = int(inst.rs, 2)
+                        src = self.registers.read(src_reg)
+                        ans = self.alu.alu_arith_i(inst.op[3:6], src, inst.addrORimm)
+                        dst_reg = int(inst.rt, 2)
+                        self.registers.write(dst_reg, ans)
 # -------------------------------------------------------
