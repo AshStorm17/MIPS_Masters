@@ -16,7 +16,9 @@ class Execute:
                 src_reg = int(inst.rs, 2)
                 temp_reg = int(inst.rt, 2)
 
-                if inst.funct[0:3] == "000":
+                if inst.funct=="001000": #handle jr instruction
+                    self.pc=src_reg
+                elif inst.funct[0:3] == "000":
                     opr1 = self.registers.read(src_reg)
                     ans = self.alu.alu_shift(inst.funct, opr1, inst.shamt)
                 else:
