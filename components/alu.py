@@ -89,7 +89,7 @@ class ALU:
         """
         COAHP: For branch equal, the ALU must perform a subtraction.
         """
-        return bin1-bin2==0 # directly compare the two 32-bit binary strings
+        return signedVal(bin1)-signedVal(bin2)==0 # directly compare the two 32-bit binary strings
 
 
 # --------------------------------------------
