@@ -1,8 +1,9 @@
 class Execute:
-    def __init__(self, memory, registers, alu):
+    def __init__(self, memory, registers, alu,pc):
         self.memory = memory
         self.registers = registers
         self.alu = alu
+        self.pc=pc
 
     # execute the sent instruction (inst object)
     def executeInst(self, inst):
@@ -68,4 +69,16 @@ class Execute:
                         ans = self.alu.alu_arith_i(inst.op[3:6], src, inst.addrORimm)
                         dst_reg = int(inst.rt, 2)
                         self.registers.write(dst_reg, ans)
+                    case "000": #branching instructions
+                        src_reg=int(inst.rs,2)
+                        dst_reg=int(inst.rt,2)
+                        src_val=self.registers.read(src_reg)
+                        dst_val=self.registers.read(dst_reg)
+                        addr=int(self.registers.read(int(inst.addrORimm,2)),2)
+                        a_equal= src_val ==dst_val
+                        b_condition= int(inst.op[3:],2)==4
+                        if (~(a_equal^b_condition)):
+                            self.pc=self.pc+ 4+ addr<<2
+                        
+
 # -------------------------------------------------------

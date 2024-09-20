@@ -20,7 +20,7 @@ file_path="assets\\binary.txt"
 memory = Memory()
 alu = ALU()
 registers = Registers()
-execute = Execute(memory, registers, alu)
+
 
 # Step 2 ---------------------------------------
 # @ BG
@@ -30,7 +30,7 @@ print(memory.data)
 # Step 3 ---------------------------------------
 PC = 0 
 IR = ""
-
+execute = Execute(memory, registers, alu,PC)
 # Step 4 ---------------------------------------
 while memory.data[PC]!=0:
     # Step 4.1: 
