@@ -30,9 +30,6 @@ class ALU:
                 return format(int(opr1, 2) >> shamt, '032b')
     
     def alu_arith(self, operation, opr1, opr2):
-        """
-        COAHP: For the R-type instructions, the ALU needs to perform one of the five actions (AND, OR, subtract, add, or set on less than
-        """
         # Note: return binary string as answer
         ans = ""
         match operation:
@@ -45,7 +42,6 @@ class ALU:
             case "100101": # or
                 ans = signedVal(opr1) | signedVal(opr2)
             case "101010": #slt 
-                # compare and return 1 or 0
                 ans = format(int(signedVal(opr1) < signedVal(opr2)), "032b")
             case "101011": # sltu
                 ans = format(int(int(opr1,2) < int(opr2,2)), "032b")
@@ -72,9 +68,6 @@ class ALU:
             case "101":
                 # ori
                 ans = opr1 | imm
-            # case "110":
-            #     # xori
-            #     ans = opr1 ^ imm
             case "111":
                 # lui
                 ans = imm << 16
@@ -96,7 +89,7 @@ class ALU:
         """
         COAHP: For branch equal, the ALU must perform a subtraction.
         """
-        return bin1-bin2==0 # directly compare the two 32-bit binary strings
+        return signedVal(bin1)-signedVal(bin2)==0 # directly compare the two 32-bit binary strings
 
 
 # --------------------------------------------
