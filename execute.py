@@ -30,7 +30,13 @@ class Execute:
                 """
                     j, jal (pseudodirect addressing, updating PC)
                 """
-                
+                addr=int(inst.address,2)
+                if (int(inst.op[3:],2)==2): #jump code
+                    self.pc= (self.pc & 0xF0000000) | (addr<<2)
+                else: #jump and link
+                    self.registers.write(31,self.pc+4) #write to return address
+                    self.pc= (self.pc & 0xF0000000) | (addr<<2)
+
             case _:
                 # handle I-type inst
                 """
