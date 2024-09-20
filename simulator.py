@@ -26,7 +26,7 @@ registers = Registers()
 # @ BG
 parse_mips_file(file_path,memory)
 
-print(memory.data)
+# print(memory.data)
 # Step 3 ---------------------------------------
 PC = 0 
 IR = ""

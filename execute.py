@@ -80,10 +80,10 @@ class Execute:
                         dst_reg=int(inst.rt,2)
                         src_val=self.registers.read(src_reg)
                         dst_val=self.registers.read(dst_reg)
-                        imm=int(self.registers.read(int(inst.addrORimm,2)),2)
+                        imm=int(inst.addrORimm,2)
                         if (imm & 0x8000): #sign extend
                             imm= imm | 0xFFFF0000
-                        a_equal= src_val ==dst_val
+                        a_equal= self.alu.isEqual(src_val,dst_val)
                         b_condition= int(inst.op[3:],2)==4
                         if (~(a_equal^b_condition)):
                             self.pc=self.pc+ 4+ imm<<2

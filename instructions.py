@@ -18,8 +18,6 @@ class ItypeInst:
         self.rt = rt
         self.addrORimm = addrORimm
 
-    def relativeAddr(self, PC):
-        pass
         
 # ---------------------------
 
@@ -29,10 +27,7 @@ class JtypeInst:
         self.op = op
         self.address = address
 
-    def jumpAddr(self, PC): 
-        PC_plus_4 = int(PC,2) + 4               # PC + 4
-        PC4 = format(PC_plus_4, '032b')         # returns 32-bit (unsigned) binary string
-        return PC4[0:4] + self.address + "00"   # pseudodirect addressing
+    
 
 # ---------------------------------------------------------
 def giveFields(inst, type):
