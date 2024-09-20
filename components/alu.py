@@ -38,7 +38,6 @@ class ALU:
         match operation:
             case "100000": # add
                 ans = signedBin(signedVal(opr1) + signedVal(opr2))
-                pass
             case "100010": # sub
                 ans = signedBin(signedVal(opr1) - signedVal(opr2))
             case "100100": # and
@@ -47,12 +46,11 @@ class ALU:
                 ans = signedVal(opr1) | signedVal(opr2)
             case "101010": #slt 
                 # compare and return 1 or 0
-                return int(signedVal(opr1) < signedVal(opr2))
+                ans = format(int(signedVal(opr1) < signedVal(opr2)), "032b")
             case "101011": # sltu
-                return int(int(opr1,2) < int(opr2,2))
+                ans = format(int(int(opr1,2) < int(opr2,2)), "032b")
             case "100111": # nor
-                return ~(signedVal(opr1) | signedVal(opr2))
-        
+                ans = format(~(signedVal(opr1) | signedVal(opr2)), "032b")
         return ans
 
     def alu_arith_i(self, operation, src, immediate):
