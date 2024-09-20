@@ -55,6 +55,34 @@ class ALU:
         
         return ans
 
+    def alu_arith_i(self, operation, src, immediate):
+        opr1 = signedVal(src)
+        imm = signedVal(immediate)
+        match operation:
+            case "000":
+                # addi
+                ans = opr1 + imm
+            case "010":
+                # slti
+                ans = 1 if opr1 < imm else 0
+            case "011":
+                # sltiu
+                ans = 1 if int(src, 2) < int(immediate, 2) else 0
+            case "100":
+                # andi
+                ans = opr1 & imm
+            case "101":
+                # ori
+                ans = opr1 | imm
+            # case "110":
+            #     # xori
+            #     ans = opr1 ^ imm
+            case "111":
+                # lui
+                ans = imm << 16
+        ans_str = format(ans, '032b')
+        return ans_str
+
     def giveAddr(self, baseAddr, lower16bits):
         """
         COAHP: For load word and store word instructions, 
