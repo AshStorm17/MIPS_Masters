@@ -16,4 +16,13 @@ class Memory:
     def fillOutput(self):
         pass
 
+    def clear_data(self):
+        self.data = [""]*4*1024
+
+    def __getitem__(self, key):
+        return self.data[key]
+    
+    def __setitem__(self, key, value):
+        self.data[key] = value
+
 # -------------------------------------------
