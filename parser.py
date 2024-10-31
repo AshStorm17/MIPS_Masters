@@ -1,3 +1,4 @@
+
 def parse_r_type(instruction):
     opcode = (instruction >> 26) & 0x3F
     rs = (instruction >> 21) & 0x1F
@@ -36,7 +37,7 @@ def parse_mips_file(file_path,Memory):
             for line in f:
                 instruction=line.strip()
                 if len(instruction) == 32 and all(bit in '01' for bit in instruction):
-                    Memory.store32bit_instr(instruction,addr)
+                    Memory.store(addr,instruction)
                     addr+=4
     except FileNotFoundError:
         print(f"Error: The file '{file_path}' was not found.")
@@ -47,6 +48,7 @@ def parse_mips_file(file_path,Memory):
 
 
 if __name__=="__main__":
+    
     bin_instrs=parse_mips_file("assets\\binary.txt")
     print(bin_instrs)
             

@@ -105,6 +105,8 @@ class MIPSPipeline:
     
     def run_pipeline(self):
         """Starts and manages pipeline stages as parallel processes."""
+        #check the state of registers
+        print(self.registers.reg)
         # Initialize processes for each stage
         fetch_process = multiprocessing.Process(target=self.fetch_stage)
         decode_process = multiprocessing.Process(target=self.decode_stage)
@@ -125,3 +127,10 @@ class MIPSPipeline:
         execute_process.join()
         mem_access_process.join()
         write_back_process.join()    
+
+        #check the final state of registers
+        print(self.registers.reg)
+    
+if __name__=="__main__":
+    mips=MIPSPipeline(file_path="assets\\binary.txt")
+    
