@@ -1,55 +1,48 @@
-# Instruction Formats---------------------------------------
-class RtypeInst:
-    def __init__(self, op, rs, rt, rd, shamt, funct):
-        self.type = 0
-        self.op = op
-        self.rs = rs       
-        self.rt = rt       
-        self.rd = rd       
-        self.shamt = shamt 
-        self.funct = funct 
-
-# ---------------------------
-class ItypeInst:
-    def __init__(self, op, rs, rt, addrORimm):
-        self.type = 1
-        self.op = op
-        self.rs = rs
-        self.rt = rt
-        self.addrORimm = addrORimm
-
+class Instruction:
+    def __init__(self,type,instruction) :
+        self.type=type
+        self.fields=self.parse_instruction(instruction)
+        self._set_attributes()
+    def parse_instruction(self,inst):
+         # Always get opcode
+        fields = {'op': inst[0:6]}
+        # Parse remaining fields based on instruction type
+        if self.type == 0:    # R-type
+            fields.update({
+                'rs': inst[6:11],
+                'rt': inst[11:16],
+                'rd': inst[16:21],
+                'shamt': inst[21:26],
+                'funct': inst[26:32]
+            })
+        elif self.type == 1:  # I-type
+            fields.update({
+                'rs': inst[6:11],
+                'rt': inst[11:16],
+                'immediate': inst[16:32]
+            })
+        elif self.type == 2:  # J-type
+            fields.update({
+                'address': inst[6:32]
+            })
+        else:
+            raise ValueError("Invalid instruction type. Must be 0 (R-type), 1 (I-type), or 2 (J-type)")
         
-# ---------------------------
-
-class JtypeInst:
-    def __init__(self, op, address):
-        self.type = 2
-        self.op = op
-        self.address = address
-
-    
-
-# ---------------------------------------------------------
-def giveFields(inst, type):
-    opcode = inst[0:6]  
-    fields = [opcode]   
-    match type:
-        case 0:
-            rs = inst[6:11]         
-            rt = inst[11:16]
-            rd = inst[16:21]
-            shamt = int[21:26]
-            funct = inst[26:32]
-            fields.extend(rs,rt,rd,shamt,funct)
-
-        case 1:
-            rs = inst[6:11]         
-            rt = inst[11:16]
-            addrORimm = inst[16:32]
-            fields.extend(rs,rt,addrORimm)
-        case 2:
-            address = inst[6:32]
-            fields.extend(address)
-    return fields
+        return fields
+    def _set_attributes(self):
+        """Set the parsed fields as attributes of the class instance."""
+        for field, value in self.fields.items():
+            setattr(self, field, value)
+    def __str__(self):
+        """Return a string representation of the instruction."""
+        type_names = {0: 'R-type', 1: 'I-type', 2: 'J-type'}
+        fields_str = ', '.join(f'{k}={v}' for k, v in self.fields.items())
+        return f"{type_names[self.type]} Instruction: {fields_str}"
 
 # ---------------------------------------------------------
+
+if __name__=="__main__":
+    inst="00000001001010101000000000100010"
+    inst=Instruction(type=0,instruction=inst)
+    print(inst)
+    print(inst.rt)
