@@ -1,3 +1,8 @@
+from components.alu import ALU
+from components.memory import Memory
+from components.registers import Registers
+from parser import parse_mips_file
+from instructions import Instruction
 class Execute:
     def __init__(self, memory, registers, alu,pc):
         self.memory = memory
@@ -92,4 +97,45 @@ class Execute:
                         
 
 # -------------------------------------------------------
-
+# if __name__=='__main__':
+#     memory = Memory()
+#     registers = Registers()
+#     alu = ALU()
+#     pc = 0
+#     execute = Execute(memory, registers, alu, pc)
+#     parse_mips_file('assets\\binary.txt',memory)
+#      # Test R-type instruction (add)
+#     r_inst = Instruction(
+#         type=0,
+#         instruction='00000010001100100100100000100000'
+#     )
+    
+#     # # Test I-type instruction (addi)
+#     # i_inst = Instruction(
+#     #     type=1,
+#     #     op="001000",  # addi
+#     #     rs="00001",  # r1
+#     #     rt="00100",  # r4
+#     #     addrORimm="0000000000000001"  # immediate value 1
+#     # )
+    
+#     # # Test J-type instruction (jump)
+#     # j_inst = Instruction(
+#     #     type=2,
+#     #     op="000010",  # j
+#     #     address="00000000000000000000000001"  # jump target
+#     # )
+    
+#     # Execute instructions
+#     print("Testing R-type instruction...")
+#     execute.executeInst(r_inst)
+#     print(f"Register 3 value after add: {registers.read(3)}")
+    
+#     # print("\nTesting I-type instruction...")
+#     # execute.executeInst(i_inst)
+#     # print(f"Register 4 value after addi: {registers.read(4)}")
+    
+#     # print("\nTesting J-type instruction...")
+#     # old_pc = execute.pc
+#     # execute.executeInst(j_inst)
+#     # print(f"PC changed from {old_pc} to {execute.pc}")

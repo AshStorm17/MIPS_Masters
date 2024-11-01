@@ -58,6 +58,7 @@ if __name__=="__main__":
     registers = Registers(initialise=True)
     parse_mips_file(file_path,memory)
     print(memory.data[:20])
-    
+    mips=MIPSProcessor(mem=memory,alu=ALU,reg=registers)
+
 
     pass
