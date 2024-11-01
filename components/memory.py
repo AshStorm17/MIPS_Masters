@@ -3,8 +3,10 @@
     # byte addressing
     # separate spaces for instructions, data, I/O
 class Memory:
-    def __init__(self):
+    def __init__(self, initialise=False):
         self.data = [""]*4*1024 # 1024 words
+        if initialise==True:
+            self.data = [format(0, '008b')]*4*1024 # initialise with all 0's
 
     def store(self, addr, value):
         self.data[addr]=value[:8]
