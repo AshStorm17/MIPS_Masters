@@ -5,8 +5,8 @@ class Registers:
 
         self.reg[0] = format(0, '032b')     # $zero register
         self.reg[31] = format(0, '032b')    # $ra = 0 (default = exit main())
-        self.reg[29] = format(1024, '032b') # $sp = 4092 (default pointing to top address in the memory)
-        self.reg[30] = format(1024, '032b') # $fp = 4092 (default pointing to top address in the memory)
+        self.reg[29] = format(4*1023, '032b') # $sp = 4092 (default pointing to top address in the memory)
+        self.reg[30] = format(4*1023, '032b') # $fp = 4092 (default pointing to top address in the memory)
 
         # uninitialised: global pointer, argument regs, value regs
 
