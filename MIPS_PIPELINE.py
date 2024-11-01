@@ -35,13 +35,33 @@ class MIPSPipeline:
         self.decode_done = multiprocessing.Event()
         self.execute_done = multiprocessing.Event()
         self.memory_done = multiprocessing.Event()
+    
+    def is_halt_instruction(self, IR):
+        """Check if an instruction is a halt instruction (syscall or jr $ra)."""
+        opcode = int(IR[:6], 2)
+        func = int(IR[-6:], 2)
         
+        if opcode == 0:
+            if func == 12:  # syscall
+                v0 = self.registers.read(2)  # Check $v0 (register 2)
+                if v0 == 10:
+                    return True
+            elif func == 8:  # jr $ra
+                ra = self.registers.read(31)  # Check $ra (register 31)
+                if ra == 0:  # If ra holds 0, it indicates end
+                    return True
+        return False
+    
     def fetch_stage(self):
         """Fetches instructions from memory."""
         while True:
             with self.pc_lock:
                 if self.PC.value < len(self.memory.data) - 4:
                     IR = ''.join(self.memory.data[self.PC.value:self.PC.value + 4])  # Fetch 32-bit instruction
+                    # Check if this is a halt instruction (syscall or jr $ra)
+                    if self.is_halt_instruction(IR):
+                        print("Halting instruction encountered.")
+                        break
                     self.IF_ID.put({'PC': self.PC.value, 'IR': IR})
                     self.PC.value += 4
                 else:
@@ -132,5 +152,6 @@ class MIPSPipeline:
         print(self.registers.reg)
     
 if __name__=="__main__":
-    mips=MIPSPipeline(file_path="assets\\binary.txt")
+    mips_pipeline = MIPSPipeline(file_path="assets/binary.txt")
+    mips_pipeline.run_pipeline()
     
