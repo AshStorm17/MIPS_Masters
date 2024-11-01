@@ -3,6 +3,7 @@ from components.memory import Memory
 from components.registers import Registers
 from instructions import Instruction
 from parser import parse_mips_file
+
 class MIPSProcessor:
     def __init__(self,mem,alu,reg):
         self.memory = mem
@@ -26,7 +27,12 @@ class MIPSProcessor:
 
 
     def fetch(self):
-        pass
+        instr = ""
+        for i in range(4):
+            instr += self.memory.data[self.pc + i]  
+        self.IF_ID['instruction'] = instr
+        self.IF_ID['PC'] = format(self.pc + 4, '032b')
+
     def decode (self):
         inst=self.IF_ID['instruction']
         opcode=int (inst[:6],2)
@@ -43,12 +49,14 @@ class MIPSProcessor:
     
     def execute(self):
         pass
-    def dmem(self):
+    def mem(self):
         pass
     def write_back(self):
         pass
     def pipelined(self):
-        pass
+        self.fetch()
+        self.decode()
+        
 
 if __name__=="__main__":
     file_path="assets\\binary_2.txt"
@@ -58,7 +66,8 @@ if __name__=="__main__":
     registers = Registers(initialise=True)
     parse_mips_file(file_path,memory)
     print(memory.data[:20])
-    mips=MIPSProcessor(mem=memory,alu=ALU,reg=registers)
+    mips = MIPSProcessor(memory, alu, registers)
+    mips.pipelined()
 
 
     pass
