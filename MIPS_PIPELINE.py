@@ -4,7 +4,7 @@ from components.alu import ALU
 from components.memory import Memory
 from instructions import Instruction
 from execute import Execute
-from parser import MIPSParser
+from MIPS_parser import MIPSParser
 
 class MIPSPipeline:
     def __init__(self, file_path):
@@ -35,67 +35,121 @@ class MIPSPipeline:
         self.decode_done = multiprocessing.Event()
         self.execute_done = multiprocessing.Event()
         self.memory_done = multiprocessing.Event()
-    
+
     def is_halt_instruction(self, IR):
-        """Check if an instruction is a halt instruction (syscall or jr $ra)."""
+        """Check if an instruction is a halt instruction (`syscall` or `jr $ra`)."""
         opcode = int(IR[:6], 2)
         func = int(IR[-6:], 2)
-        
-        if opcode == 0:
+
+        if opcode == 0:  # This is an R-type instruction
             if func == 12:  # syscall
-                v0 = self.registers.read(2)  # Check $v0 (register 2)
-                if v0 == 10:
-                    return True
-            elif func == 8:  # jr $ra
-                ra = self.registers.read(31)  # Check $ra (register 31)
-                if ra == 0:  # If ra holds 0, it indicates end
-                    return True
+                return True
+            elif func == 8:  # jr (jump register)
+                rs = int(IR[6:11], 2)  # Extract the rs field (source register)
+                if rs == 31:  # Check if it's $ra (register 31)
+                    ra = self.registers.read(31)  # Read the $ra register
+                    if ra == 0:  # If $ra holds 0, it indicates end
+                        return True
         return False
     
     def fetch_stage(self):
         """Fetches instructions from memory."""
         while True:
             with self.pc_lock:
-                if self.PC.value < len(self.memory.data) - 4:
-                    IR = ''.join(self.memory.data[self.PC.value:self.PC.value + 4])  # Fetch 32-bit instruction
-                    # Check if this is a halt instruction (syscall or jr $ra)
+                # Check if PC is within range
+                if self.PC.value // 4 < len(self.memory.data):
+                    instruction_data = self.memory.data[self.PC.value // 4]
+                    IR = instruction_data["IR"]
                     if self.is_halt_instruction(IR):
-                        print("Halting instruction encountered.")
-                        break
-                    self.IF_ID.put({'PC': self.PC.value, 'IR': IR})
+                        break  # Exit when halt instruction is reached
+                    PC = instruction_data["PC"]
+                    self.IF_ID.put({'PC': PC, 'IR': IR})
                     self.PC.value += 4
                 else:
                     break  # Exit when end of instructions is reached
+
             self.decode_done.wait()
             self.decode_done.clear()
     
     def decode_stage(self):
-        """Decodes instructions and passes to execute stage."""
+        """Decodes instructions and passes them to the execute stage."""
         while True:
             if not self.IF_ID.empty():
                 fetched_data = self.IF_ID.get()
+
+                # Check for end signal
+                if fetched_data is None:  # If None is received, break the loop
+                    break
+
                 IR = fetched_data['IR']
-                opcode = int(IR[0:7], 2)
-                if opcode == 0:
-                    fields = giveFields(IR, 0)  # R-type instruction
-                    inst_type = RtypeInst
-                elif opcode in [2, 3]:
-                    fields = giveFields(IR, 2)  # J-type instruction
-                    inst_type = JtypeInst
-                else:
-                    fields = giveFields(IR, 1)  # I-type instruction
-                    inst_type = ItypeInst
-                self.ID_EX.put({'fields': fields, 'inst_type': inst_type})
+                opcode = int(IR[:6], 2)
+
+                # Create the instruction object based on opcode
+                inst = Instruction(type=0 if opcode == 0 else (2 if opcode in [2, 3] else 1), instruction=IR)
+                
+                self.ID_EX['instruction'] = inst
+                self.ID_EX['PC'] = fetched_data['PC']
+                self.ID_EX['RS'] = self.registers.read(int(inst.rs, 2))
+                self.ID_EX['RT'] = self.registers.read(int(inst.rt, 2))
+
+                if inst.type == 1:
+                    immediate = int(inst.immediate, 2)
+                    if (immediate & 0x8000):  # Sign extend if negative
+                        immediate |= 0xFFFF0000
+                    self.ID_EX['Immediate'] = immediate
+                
+                print("Decoded instruction:", self.ID_EX)
                 self.decode_done.set()
     
     def execute_stage(self):
-        """Executes instructions and passes results to memory access stage."""
+        """Executes instructions and updates the EX/MEM pipeline register."""
         while True:
             if not self.ID_EX.empty():
                 decoded_data = self.ID_EX.get()
-                fields, inst_type = decoded_data['fields'], decoded_data['inst_type']
-                result, dest_reg, inst_type_name = self.execute_handler.executeInst(inst_type, *fields)
-                self.EX_MEM.put({'ALU_result': result, 'dest_reg': dest_reg, 'inst_type': inst_type_name})
+                inst = decoded_data['instruction']
+                self.EX_MEM['instruction'] = inst
+                
+                if inst.type == 0:  # R-type instruction
+                    src1 = decoded_data['RD_1']
+                    src2 = decoded_data['RD_2']
+                    
+                    if inst.funct == '001000':  # jr
+                        self.pc = src1
+                    elif inst.funct[:3] == "000":  # shift operations
+                        result = self.alu.alu_shift(inst.funct, src1, int(inst.shamt, 2))
+                    else:  # arithmetic/logical operations
+                        result = self.alu.alu_arith(inst.funct, src1, src2)
+                    
+                    dst_reg = int(inst.rd, 2)
+                    self.EX_MEM['ALU_result'] = result
+                    self.EX_MEM['RegDst'] = dst_reg
+                
+                elif inst.type == 1:  # I-type instruction
+                    src1 = decoded_data['RD_1']
+                    imm = decoded_data['Immediate']
+                    
+                    if inst.op[:3] == "100":  # load
+                        address = self.alu.giveAddr(src1, imm)
+                        self.EX_MEM['ALU_result'] = address
+                        self.EX_MEM['RegDst'] = int(inst.rt, 2)
+                    elif inst.op[:3] == "101":  # store
+                        address = self.alu.giveAddr(src1, imm)
+                        self.EX_MEM['ALU_result'] = address
+                        self.EX_MEM['RD_2'] = decoded_data['RD_2']
+                    else:  # other arithmetic/logical I-type
+                        result = self.alu.alu_arith_i(inst.op[3:6], src1, imm)
+                        self.EX_MEM['ALU_result'] = result
+                        self.EX_MEM['RegDst'] = int(inst.rt, 2)
+                
+                elif inst.type == 2:  # J-type instruction
+                    addr = int(inst.address, 2)
+                    
+                    if inst.op[3:] == '000010':  # j instruction
+                        self.pc = (self.pc & 0xF0000000) | (addr << 2)
+                    elif inst.op[3:] == '000011':  # jal instruction
+                        self.registers.write(31, self.pc + 4)  # Write return address
+                        self.pc = (self.pc & 0xF0000000) | (addr << 2)
+                        
                 self.execute_done.set()
     
     def memory_access_stage(self):
