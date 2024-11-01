@@ -2,14 +2,17 @@ import multiprocessing
 from components.registers import Registers
 from components.alu import ALU
 from components.memory import Memory
-from instructions import RtypeInst, ItypeInst, JtypeInst, giveFields
+from instructions import Instruction
 from execute import Execute
-from parser import parse_mips_file
+from parser import MIPSParser
 
 class MIPSPipeline:
     def __init__(self, file_path):
         # Initialize components
         self.memory = Memory()
+        mips_parser = MIPSParser()
+        self.memory.data = mips_parser.parse_mips_file(file_path)
+        
         self.alu = ALU()
         self.registers = Registers()
         self.PC = multiprocessing.Value('i', 0)  # Shared program counter
@@ -26,9 +29,6 @@ class MIPSPipeline:
         
         # Initialize execute handler
         self.execute_handler = Execute(self.memory, self.registers, self.alu, self.PC)
-        
-        # Load instructions into memory
-        parse_mips_file(file_path, self.memory)
 
         # Synchronization events for pipeline control
         self.fetch_done = multiprocessing.Event()
