@@ -1,9 +1,8 @@
-
 from components.alu import ALU
 from components.memory import Memory
 from components.registers import Registers
 from instructions import Instruction
-from parser import parse_mips_file
+from parser_old import parse_mips_file
 
 class MIPSProcessor:
     def __init__(self, mem, alu, reg):
@@ -131,11 +130,13 @@ class MIPSProcessor:
 
     def pipelined(self):
         # Simulates one clock cycle of the pipeline
-        self.write_back()
-        self.mem()
-        self.execute()
-        self.decode()
+        
         self.fetch()
+        self.decode()
+        self.execute()
+        self.mem()
+
+        self.write_back()
 
 # Example usage
 if __name__ == "__main__":

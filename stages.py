@@ -2,7 +2,8 @@ from components.alu import ALU
 from components.memory import Memory
 from components.registers import Registers
 from instructions import Instruction
-from parser import parse_mips_file
+from parser_old import parse_mips_file
+
 class MIPSProcessor:
     def __init__(self,mem,alu,reg):
         self.memory = mem
@@ -61,18 +62,60 @@ class MIPSProcessor:
             imm= imm | 0xFFFF0000
         self.ID_EX['Immediate']=imm
         self.ID_EX['RegWrite']=inst.rd
-        # print(self.ID_EX['instruction'])
-        # print(format(self.ID_EX['Immediate'],'032b'))
+        print(self.ID_EX['instruction'])
+        print(format(self.ID_EX['Immediate'],'032b'))
     
     def execute(self):
-        pass
+        inst = self.ID_EX['instruction']
+        
+        if inst.type == 0:  # R-type
+            src1 = self.ID_EX['RD_1']
+            src2 = self.ID_EX['RD_2']
+            if inst.funct == '001000':  # jr
+                self.pc = src1
+            elif inst.funct[:3] == "000":  # shift operations
+                result = self.alu.alu_shift(inst.funct, src1, int(inst.shamt, 2))
+            else:  # arithmetic/logical operations
+                result = self.alu.alu_arith(inst.funct, src1, src2)
+            dst_reg = int(inst.rd, 2)
+            self.EX_MEM['ALU_result'] = result
+            self.EX_MEM['RegDst'] = dst_reg
+        
+        elif inst.type == 1:  # I-type
+            src1 = self.ID_EX['RD_1']
+            imm = self.ID_EX['Immediate']
+            if inst.op[:3] == "100":  # load
+                address = self.alu.giveAddr(src1, imm)
+                self.EX_MEM['ALU_result'] = address
+                self.EX_MEM['RegDst'] = int(inst.rt, 2)
+            elif inst.op[:3] == "101":  # store
+                address = self.alu.giveAddr(src1, imm)
+                self.EX_MEM['ALU_result'] = address
+                self.EX_MEM['RD_2'] = self.ID_EX['RD_2']
+            else:
+                result = self.alu.alu_arith_i(inst.op[3:6], src1, imm)
+                self.EX_MEM['ALU_result'] = result
+                self.EX_MEM['RegDst'] = int(inst.rt, 2)
+        
+        elif inst.type == 2:  # J-type
+            addr = int(inst.address, 2)
+            if inst.op[3:] == '000010':  # j instruction
+                self.pc = (self.pc & 0xF0000000) | (addr << 2)
+            elif inst.op[3:] == '000011':  # jal instruction
+                self.registers.write(31, self.pc + 4)  # Write to return address
+                self.pc = (self.pc & 0xF0000000) | (addr << 2)
+        
+        self.EX_MEM['instruction'] = inst
+        print("Execute Stage:", {key: value for key, value in self.EX_MEM.items()})
+
     def dmem(self):
         pass
     def write_back(self):
         pass
     def pipelined(self):
-        pass
-
+        self.fetch()
+        self.decode()
+        self.execute()
 if __name__=="__main__":
     file_path="assets\\binary_2.txt"
     # Step 1 ---------------------------------------
@@ -84,5 +127,3 @@ if __name__=="__main__":
     mips = MIPSProcessor(memory, alu, registers)
     mips.pipelined()
 
-
-    pass
