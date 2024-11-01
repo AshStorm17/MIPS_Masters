@@ -110,8 +110,8 @@ class MIPSPipeline:
                 self.EX_MEM['instruction'] = inst
                 
                 if inst.type == 0:  # R-type instruction
-                    src1 = decoded_data['RD_1']
-                    src2 = decoded_data['RD_2']
+                    src1 = decoded_data['RS']
+                    src2 = decoded_data['RT']
                     
                     if inst.funct == '001000':  # jr
                         self.pc = src1

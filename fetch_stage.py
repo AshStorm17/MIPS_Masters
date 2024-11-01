@@ -9,7 +9,7 @@ class FetchTest:
         mips_parser = MIPSParser()
         # Store the parsed instructions directly in memory.data as a list of dictionaries
         self.memory.data = mips_parser.parse_mips_file(file_path)
-        self.registers = Registers()  # Registers are not needed for this test
+        self.registers = Registers(initialise=True)  # Registers are not needed for this test
 
         self.PC = multiprocessing.Value('i', 0)  # Shared program counter
         self.pc_lock = multiprocessing.Lock()  # Lock for updating PC
