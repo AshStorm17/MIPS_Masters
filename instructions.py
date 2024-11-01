@@ -4,29 +4,21 @@ class Instruction:
         self.fields=self.parse_instruction(instruction)
         self._set_attributes()
     def parse_instruction(self,inst):
-         # Always get opcode
+        # Always get opcode
         fields = {'op': inst[0:6]}
-        # Parse remaining fields based on instruction type
-        if self.type == 0:    # R-type
-            fields.update({
-                'rs': inst[6:11],
-                'rt': inst[11:16],
-                'rd': inst[16:21],
-                'shamt': inst[21:26],
-                'funct': inst[26:32]
-            })
-        elif self.type == 1:  # I-type
-            fields.update({
-                'rs': inst[6:11],
-                'rt': inst[11:16],
-                'immediate': inst[16:32]
-            })
-        elif self.type == 2:  # J-type
-            fields.update({
-                'address': inst[6:32]
-            })
-        else:
-            raise ValueError("Invalid instruction type. Must be 0 (R-type), 1 (I-type), or 2 (J-type)")
+        
+        # R-type fields (type 0)
+        fields['rs'] = inst[6:11]
+        fields['rt'] = inst[11:16]
+        fields['rd'] = inst[16:21]
+        fields['shamt'] = inst[21:26]
+        fields['funct'] = inst[26:32]
+        
+        # I-type fields (type 1)
+        fields['immediate'] = inst[16:32]
+        
+        # J-type fields (type 2)
+        fields['address'] = inst[6:32]
         
         return fields
     def _set_attributes(self):
