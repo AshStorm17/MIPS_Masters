@@ -26,50 +26,55 @@ class ExecuteTest:
                 if decoded_data is None:  # If None is received, break the loop
                     break
 
+                # Retrieve the instruction and type
                 inst = decoded_data['Instruction']
                 self.EX_MEM['instruction'] = inst
+                type = inst.type  # Save the type of instruction
+                inst = inst.get_fields()  # Get the instruction fields as a dictionary
+                
+                print("Executing instruction:", inst)
 
                 # Simulated ALU operations based on instruction type
-                if inst.type == 0:  # R-type
+                if type == 0:  # R-type
                     src1 = decoded_data['RS']
                     src2 = decoded_data.get('RT', 0)  # Get RT; default to 0 if not present
                     
                     # ALU operations based on funct
-                    if inst.funct == '001000':  # jr
+                    if inst['funct'] == '001000':  # jr
                         with self.pc_lock:
                             self.PC.value = src1
-                    elif inst.funct[:3] == "000":  # Shift operations
-                        result = self.alu.alu_shift(inst.funct, src1, int(inst.shamt, 2))
+                    elif inst['funct'][:3] == "000":  # Shift operations
+                        result = self.alu.alu_shift(inst['funct'], src1, int(inst['shamt'], 2))
                         self.EX_MEM['ALU_result'] = result
                     else:  # Arithmetic/logical operations
-                        result = self.alu.alu_arith(inst.funct, src1, src2)
+                        result = self.alu.alu_arith(inst['funct'], src1, src2)
                         self.EX_MEM['ALU_result'] = result
-                        dst_reg = int(inst.rd, 2)
+                        dst_reg = int(inst['rd'], 2)
                         self.EX_MEM['RD'] = dst_reg
                 
-                elif inst.type == 1:  # I-type
+                elif type == 1:  # I-type
                     src1 = decoded_data['RS']
                     imm = decoded_data.get('Immediate', 0)
 
-                    if inst.op[:3] == "100":  # Load
+                    if inst['op'][:3] == "100":  # Load
                         address = self.alu.giveAddr(src1, imm)
                         self.EX_MEM['ALU_result'] = address
-                        self.EX_MEM['RD'] = int(inst.rt, 2)
-                    elif inst.op[:3] == "101":  # Store
+                        self.EX_MEM['RD'] = int(inst['rt'], 2)
+                    elif inst['op'][:3] == "101":  # Store
                         address = self.alu.giveAddr(src1, imm)
                         self.EX_MEM['ALU_result'] = address
                         self.EX_MEM['RT'] = decoded_data.get('RT', 0)  # Default to 0 if not present
                     else:  # Arithmetic/logical operations
-                        result = self.alu.alu_arith_i(inst.op[3:6], src1, imm)
+                        result = self.alu.alu_arith_i(inst['op'][3:6], src1, imm)
                         self.EX_MEM['ALU_result'] = result
-                        self.EX_MEM['RD'] = int(inst.rt, 2)
+                        self.EX_MEM['RD'] = int(inst['rt'], 2)
 
-                elif inst.type == 2:  # J-type
-                    addr = int(inst.address, 2)
-                    if inst.op[3:] == '000010':  # j
+                elif type == 2:  # J-type
+                    addr = int(inst['address'], 2)
+                    if inst['op'][3:] == '000010':  # j
                         with self.pc_lock:
                             self.PC.value = (self.PC.value & 0xF0000000) | (addr << 2)
-                    elif inst.op[3:] == '000011':  # jal
+                    elif inst['op'][3:] == '000011':  # jal
                         self.registers.write(31, self.PC.value + 4)
                         with self.pc_lock:
                             self.PC.value = (self.PC.value & 0xF0000000) | (addr << 2)
