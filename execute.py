@@ -1,8 +1,8 @@
-from components.alu import ALU
-from components.memory import Memory
-from components.registers import Registers
-from parser import parse_mips_file
-from instructions import Instruction
+# from components.alu import ALU
+# from components.memory import Memory
+# from components.registers import Registers
+# from parser import parse_mips_file
+# from instructions import Instruction
 class Execute:
     def __init__(self, memory, registers, alu,pc):
         self.memory = memory
@@ -95,6 +95,96 @@ class Execute:
                         if (~(a_equal^b_condition)):
                             self.pc=self.pc+ 4+ imm<<2
                         
+
+def execute_instruction(memory, registers, alu, pc, inst):
+    # Execute the sent instruction (inst object)
+
+    match inst.type:
+        case 0:
+            # Handle R-type instruction
+            src_reg = int(inst.rs, 2)
+            temp_reg = int(inst.rt, 2)
+
+            if inst.funct == "001000":  # Handle jr instruction
+                pc = registers.read(src_reg)  # Update PC to the source register value
+            elif inst.funct[0:3] == "000":  # Shift instructions
+                opr1 = registers.read(src_reg)
+                ans = alu.alu_shift(inst.funct, opr1, inst.shamt)
+            else:
+                opr1 = registers.read(src_reg)
+                opr2 = registers.read(temp_reg)
+                ans = alu.alu_arith(inst.funct, opr1, opr2)
+
+            dst_reg = int(inst.rd, 2)
+            registers.write(dst_reg, ans)
+
+        case 2 | 3:
+            # Handle J-type instruction
+            addr = int(inst.address, 2)
+
+            if int(inst.op[3:], 2) == 2:  # Jump (j)
+                pc = (pc & 0xF0000000) | (addr << 2)
+            else:  # Jump and link (jal)
+                registers.write(31, pc + 4)  # Write return address
+                pc = (pc & 0xF0000000) | (addr << 2)
+
+        case _:
+            # Handle I-type instruction
+            match inst.op[0:3]:
+                case "100":  # Load instructions
+                    addr = int(alu.giveAddr(inst.rs, inst.addrORimm), 2)
+                    op2ndHalf = int(inst.op[3:6], 2)
+                    i_range = op2ndHalf % 4
+                    loadedStr = ""
+
+                    for i in range(i_range):
+                        loadedStr += memory.load(addr + i)
+
+                    regNo = int(inst.rt, 2)
+                    signExtAmt = (4 - (i_range + 1)) * 8
+
+                    # 0,1,3 => signed, 4,5 => unsigned
+                    if op2ndHalf < 4:
+                        loadedStr = (loadedStr[0] * signExtAmt) + loadedStr
+                    else:
+                        loadedStr = ("0" * signExtAmt) + loadedStr
+
+                    registers.write(regNo, loadedStr)
+
+                case "101":  # Store instructions
+                    addr = int(alu.giveAddr(inst.rs, inst.addrORimm), 2)
+                    op2ndHalf = int(inst.op[3:6], 2)
+                    i_range = op2ndHalf
+                    regNo = int(inst.rt, 2)
+                    storeStr = registers.read(regNo)
+
+                    for i in range(24, 24 - (op2ndHalf * 8) - 1, -8):
+                        memory.store(storeStr[i:i + 8], addr + (24 - i) // 8)
+
+                case "001":  # Remaining I-type
+                    src_reg = int(inst.rs, 2)
+                    src = registers.read(src_reg)
+                    ans = alu.alu_arith_i(inst.op[3:6], src, inst.addrORimm)
+                    dst_reg = int(inst.rt, 2)
+                    registers.write(dst_reg, ans)
+
+                case "000":  # Branching instructions
+                    src_reg = int(inst.rs, 2)
+                    dst_reg = int(inst.rt, 2)
+                    src_val = registers.read(src_reg)
+                    dst_val = registers.read(dst_reg)
+                    imm = int(inst.addrORimm, 2)
+
+                    if imm & 0x8000:  # Sign extend
+                        imm = imm | 0xFFFF0000
+
+                    a_equal = alu.isEqual(src_val, dst_val)
+                    b_condition = int(inst.op[3:], 2) == 4
+
+                    if ~(a_equal ^ b_condition):
+                        pc += 4 + (imm << 2)
+
+    return pc  # Return updated PC after instruction execution
 
 # -------------------------------------------------------
 # if __name__=='__main__':

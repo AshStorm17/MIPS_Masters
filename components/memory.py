@@ -14,9 +14,8 @@ class Memory:
         self.data[addr+2]=value[16:24]
         self.data[addr+3]=value[24:32]
 
-    def load(self, addr):
+    def load_byte(self, addr):
         return self.data[addr]
-    
     # function for I/O access
     def fillOutput(self):
         pass
