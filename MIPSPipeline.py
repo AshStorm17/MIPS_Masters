@@ -33,6 +33,10 @@ class MIPSPipeline:
         self.memory_done = multiprocessing.Event()
         self.write_done = multiprocessing.Event()
 
+        # Use a Manager to create a shared list for register states
+        manager = multiprocessing.Manager()
+        self.register_states = manager.list()
+
     def is_halt_instruction(self, IR):
         """Check if an instruction is a halt instruction (`syscall` or `jr $ra`)."""
         opcode = int(IR[:6], 2)
@@ -265,7 +269,8 @@ class MIPSPipeline:
                     self.registers.write(reg_dst, memory_data['Mem_data'])
                 elif type in [0, 1]:  # R-type or I-type ALU instruction
                     self.registers.write(reg_dst, memory_data['ALU_result'])
-            
+
+                self.register_states.append(self.registers.reg.copy())
                 print(f"Write-Back Stage: Write back completed for instruction {memory_data}")
                 self.write_done.set()
     
@@ -296,6 +301,12 @@ class MIPSPipeline:
 
         #check the final state of registers
         print(self.registers.reg)
+        
+        # Display the tracked register states after each instruction
+        print("Tracked Register States After Each Instruction:")
+        for i, state in enumerate(self.register_states):
+            print(f"Instruction {i+1}: {state}")
+            print() 
     
 if __name__=="__main__":
     mips_pipeline = MIPSPipeline(file_path="assets/binary.txt")
