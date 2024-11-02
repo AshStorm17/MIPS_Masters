@@ -140,9 +140,9 @@ class MIPSPipeline:
                 # Send the decoded values to the ID_EX queue
                 self.ID_EX.put(decoded_values)
                 print(f"Decode Stage: Instruction decoded with PC {fetched_data['PC']}")
+                self.decode_done.set()
                 self.execute_done.wait()
                 self.execute_done.clear()
-                self.decode_done.set()
     
     def execute_stage(self):
         """Executes instructions and updates the EX/MEM pipeline register."""
@@ -207,7 +207,6 @@ class MIPSPipeline:
                 self.execute_done.set()
                 self.memory_done.wait()
                 self.memory_done.clear()
-                self.execute_done.set()
     
     def memory_access_stage(self):
         """Handles memory operations and passes results to write-back stage."""
@@ -229,7 +228,7 @@ class MIPSPipeline:
                     address = inst['ALU_result']
                     mem_data = "".join(self.memory.load_byte(address + i) for i in range(4))  # Load 4 bytes
                     memory_data['Mem_data'] = mem_data
-                    memory_data['RegDst'] = inst['RD']
+                    memory_data['RD'] = inst['RD']
                 
                 elif type == 1 and inst['op'][:3] == "101":  # Store instruction
                     address = inst['ALU_result']
@@ -239,7 +238,7 @@ class MIPSPipeline:
 
                 else:  # No memory access, pass ALU result
                     memory_data['ALU_result'] = execute_data['ALU_result']
-                    memory_data['RegDst'] = execute_data['RD']
+                    memory_data['RD'] = execute_data['RD']
 
                 self.MEM_WB.put(memory_data)
                 print(f"Memory Access Stage: Instruction memory access with data {memory_data}")
@@ -259,7 +258,7 @@ class MIPSPipeline:
                 inst = memory_data['instruction']
                 type = inst.type  # Save the type of instruction
                 inst = inst.get_fields()
-                reg_dst = memory_data['RegDst']
+                reg_dst = memory_data['RD']
                 
                 # Perform the write-back operation
                 if type == 1 and inst['op'][:3] == "100":  # Load instruction
