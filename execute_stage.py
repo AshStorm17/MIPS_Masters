@@ -6,14 +6,14 @@ from components.alu import ALU
 from fetch_stage import FetchTest
 
 class ExecuteTest:
-    def __init__(self, ID_EX):
+    def __init__(self, ID_EX, EX_MEM):
         self.memory = Memory()
         self.registers = Registers(initialise=True)  # Initialize registers
         self.alu = ALU()  # Create an instance of the ALU
         self.PC = multiprocessing.Value('i', 0)
         self.pc_lock = multiprocessing.Lock()
         self.ID_EX = ID_EX  # Queue for decoded instructions
-        self.EX_MEM = {}  # Stores executed results
+        self.EX_MEM = EX_MEM  # Queue for executed results
         self.execute_done = multiprocessing.Event()
 
     def execute_stage(self):
@@ -28,9 +28,10 @@ class ExecuteTest:
 
                 # Retrieve the instruction and type
                 inst = decoded_data['Instruction']
-                self.EX_MEM['instruction'] = inst
                 type = inst.type  # Save the type of instruction
                 inst = inst.get_fields()  # Get the instruction fields as a dictionary
+
+                result = {'instruction': decoded_data['Instruction']}
                 
                 print("Executing instruction:", inst)
 
@@ -44,30 +45,24 @@ class ExecuteTest:
                         with self.pc_lock:
                             self.PC.value = src1
                     elif inst['funct'][:3] == "000":  # Shift operations
-                        result = self.alu.alu_shift(inst['funct'], src1, int(inst['shamt'], 2))
-                        self.EX_MEM['ALU_result'] = result
+                        result['ALU_result'] = self.alu.alu_shift(inst['funct'], src1, int(inst['shamt'], 2))
                     else:  # Arithmetic/logical operations
-                        result = self.alu.alu_arith(inst['funct'], src1, src2)
-                        self.EX_MEM['ALU_result'] = result
-                        dst_reg = int(inst['rd'], 2)
-                        self.EX_MEM['RD'] = dst_reg
+                        result['ALU_result'] = self.alu.alu_arith(inst['funct'], src1, src2)
+                        result['RD'] = int(inst['rd'], 2)
                 
                 elif type == 1:  # I-type
                     src1 = decoded_data['RS']
                     imm = decoded_data.get('Immediate', 0)
 
                     if inst['op'][:3] == "100":  # Load
-                        address = self.alu.giveAddr(src1, imm)
-                        self.EX_MEM['ALU_result'] = address
-                        self.EX_MEM['RD'] = int(inst['rt'], 2)
+                        result['ALU_result'] = self.alu.giveAddr(src1, imm)
+                        result['RD'] = int(inst['rt'], 2)
                     elif inst['op'][:3] == "101":  # Store
-                        address = self.alu.giveAddr(src1, imm)
-                        self.EX_MEM['ALU_result'] = address
-                        self.EX_MEM['RT'] = decoded_data.get('RT', 0)  # Default to 0 if not present
+                        result['ALU_result'] = self.alu.giveAddr(src1, imm)
+                        result['RT'] = decoded_data.get('RT', 0)  # Default to 0 if not present
                     else:  # Arithmetic/logical operations
-                        result = self.alu.alu_arith_i(inst['op'][3:6], src1, imm)
-                        self.EX_MEM['ALU_result'] = result
-                        self.EX_MEM['RD'] = int(inst['rt'], 2)
+                        result['ALU_result'] = self.alu.alu_arith_i(inst['op'][3:6], src1, imm)
+                        result['RD'] = int(inst['rt'], 2)
 
                 elif type == 2:  # J-type
                     addr = int(inst['address'], 2)
@@ -79,13 +74,17 @@ class ExecuteTest:
                         with self.pc_lock:
                             self.PC.value = (self.PC.value & 0xF0000000) | (addr << 2)
 
-                print("Executed instruction:", self.EX_MEM)
+                print("Executed instruction:", result)
+                
+                # Put the result in the EX_MEM queue
+                self.EX_MEM.put(result)
                 self.execute_done.set()
 
 def run_pipeline(file_path):
     # Create a multiprocessing Queue for the IF_ID stage
     IF_ID = multiprocessing.Queue()
     ID_EX = multiprocessing.Queue()  # Create a Queue for ID/EX stage
+    EX_MEM = multiprocessing.Queue()  # Create a Queue for EX/MEM stage
     
     # Create and start the FetchTest process
     fetch_test = FetchTest(file_path, IF_ID)
@@ -100,7 +99,7 @@ def run_pipeline(file_path):
     decode_process.start()
 
     # Create ExecuteTest instance and run the execute stage
-    execute_test = ExecuteTest(ID_EX)
+    execute_test = ExecuteTest(ID_EX, EX_MEM)
     execute_process = multiprocessing.Process(target=execute_test.execute_stage)
     execute_process.start()
 

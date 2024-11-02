@@ -83,22 +83,56 @@ class MIPSPipeline:
 
                 IR = fetched_data['IR']
                 opcode = int(IR[:6], 2)
-
+    
                 # Create the instruction object based on opcode
-                inst = Instruction(type=0 if opcode == 0 else (2 if opcode in [2, 3] else 1), instruction=IR)
+                if opcode == 0:
+                    inst_type = 0  # R-type
+                elif opcode in [2, 3]:
+                    inst_type = 2  # J-type
+                else:
+                    inst_type = 1  # I-type
                 
-                self.ID_EX['instruction'] = inst
-                self.ID_EX['PC'] = fetched_data['PC']
-                self.ID_EX['RS'] = self.registers.read(int(inst.rs, 2))
-                self.ID_EX['RT'] = self.registers.read(int(inst.rt, 2))
+                inst = Instruction(type=inst_type, instruction=IR)
+                fields = inst.get_fields()
 
-                if inst.type == 1:
-                    immediate = int(inst.immediate, 2)
+                # Prepare the data to send to the ID_EX stage
+                id_ex_data = {
+                    'instruction': inst,
+                    'PC': fetched_data['PC'],
+                    'RS': self.registers.read(int(fields['rs'], 2)),  # Read value of RS register
+                }
+
+                # Handle I-type immediate value and sign extension
+                if inst.type == 1:  # I-type instruction
+                    immediate = int(IR[16:], 2)  # Immediate is bits 16-31
                     if (immediate & 0x8000):  # Sign extend if negative
                         immediate |= 0xFFFF0000
-                    self.ID_EX['Immediate'] = immediate
+                    id_ex_data['Immediate'] = immediate
                 
-                print("Decoded instruction:", self.ID_EX)
+                # Handle J-type instruction
+                if inst.type == 2:  # J-type instruction
+                    id_ex_data['Address'] = int(IR[6:], 2)  # Convert address to decimal
+
+                # Create a dictionary with the mapped values
+                decoded_values = {
+                    'Instruction': id_ex_data['instruction'],
+                    'PC': id_ex_data['PC'],
+                    'RS': id_ex_data['RS'],
+                }
+
+                # Include RT only for R-type and J-type instructions
+                if inst.type == 0 or inst.type == 2:  # R-type or J-type
+                    id_ex_data['RT'] = self.registers.read(int(fields['rt'], 2))  # Read RT register
+                    decoded_values['RT'] = id_ex_data['RT']
+                
+                # Add Immediate or Address if they exist
+                if 'Immediate' in id_ex_data:
+                    decoded_values['Immediate'] = id_ex_data['Immediate']
+                if 'Address' in id_ex_data:
+                    decoded_values['Address'] = id_ex_data['Address']
+
+                # Send the decoded values to the ID_EX queue
+                self.ID_EX.put(decoded_values)
                 self.decode_done.set()
     
     def execute_stage(self):
@@ -106,76 +140,110 @@ class MIPSPipeline:
         while True:
             if not self.ID_EX.empty():
                 decoded_data = self.ID_EX.get()
-                inst = decoded_data['instruction']
-                self.EX_MEM['instruction'] = inst
+
+                # Check for end signal
+                if decoded_data is None:  # If None is received, break the loop
+                    break
+
+                # Retrieve the instruction and type
+                inst = decoded_data['Instruction']
+                type = inst.type  # Save the type of instruction
+                inst = inst.get_fields()  # Get the instruction fields as a dictionary
+
+                result = {'instruction': decoded_data['Instruction']}
                 
-                if inst.type == 0:  # R-type instruction
+                print("Executing instruction:", inst)
+
+                # Simulated ALU operations based on instruction type
+                if type == 0:  # R-type
                     src1 = decoded_data['RS']
-                    src2 = decoded_data['RT']
+                    src2 = decoded_data.get('RT', 0)  # Get RT; default to 0 if not present
                     
-                    if inst.funct == '001000':  # jr
-                        self.pc = src1
-                    elif inst.funct[:3] == "000":  # shift operations
-                        result = self.alu.alu_shift(inst.funct, src1, int(inst.shamt, 2))
-                    else:  # arithmetic/logical operations
-                        result = self.alu.alu_arith(inst.funct, src1, src2)
-                    
-                    dst_reg = int(inst.rd, 2)
-                    self.EX_MEM['ALU_result'] = result
-                    self.EX_MEM['RegDst'] = dst_reg
+                    # ALU operations based on funct
+                    if inst['funct'] == '001000':  # jr
+                        with self.pc_lock:
+                            self.PC.value = src1
+                    elif inst['funct'][:3] == "000":  # Shift operations
+                        result['ALU_result'] = self.alu.alu_shift(inst['funct'], src1, int(inst['shamt'], 2))
+                    else:  # Arithmetic/logical operations
+                        result['ALU_result'] = self.alu.alu_arith(inst['funct'], src1, src2)
+                        result['RD'] = int(inst['rd'], 2)
                 
-                elif inst.type == 1:  # I-type instruction
-                    src1 = decoded_data['RD_1']
-                    imm = decoded_data['Immediate']
-                    
-                    if inst.op[:3] == "100":  # load
-                        address = self.alu.giveAddr(src1, imm)
-                        self.EX_MEM['ALU_result'] = address
-                        self.EX_MEM['RegDst'] = int(inst.rt, 2)
-                    elif inst.op[:3] == "101":  # store
-                        address = self.alu.giveAddr(src1, imm)
-                        self.EX_MEM['ALU_result'] = address
-                        self.EX_MEM['RD_2'] = decoded_data['RD_2']
-                    else:  # other arithmetic/logical I-type
-                        result = self.alu.alu_arith_i(inst.op[3:6], src1, imm)
-                        self.EX_MEM['ALU_result'] = result
-                        self.EX_MEM['RegDst'] = int(inst.rt, 2)
+                elif type == 1:  # I-type
+                    src1 = decoded_data['RS']
+                    imm = decoded_data.get('Immediate', 0)
+
+                    if inst['op'][:3] == "100":  # Load
+                        result['ALU_result'] = self.alu.giveAddr(src1, imm)
+                        result['RD'] = int(inst['rt'], 2)
+                    elif inst['op'][:3] == "101":  # Store
+                        result['ALU_result'] = self.alu.giveAddr(src1, imm)
+                        result['RT'] = decoded_data.get('RT', 0)  # Default to 0 if not present
+                    else:  # Arithmetic/logical operations
+                        result['ALU_result'] = self.alu.alu_arith_i(inst['op'][3:6], src1, imm)
+                        result['RD'] = int(inst['rt'], 2)
+
+                elif type == 2:  # J-type
+                    addr = int(inst['address'], 2)
+                    if inst['op'][3:] == '000010':  # j
+                        with self.pc_lock:
+                            self.PC.value = (self.PC.value & 0xF0000000) | (addr << 2)
+                    elif inst['op'][3:] == '000011':  # jal
+                        self.registers.write(31, self.PC.value + 4)
+                        with self.pc_lock:
+                            self.PC.value = (self.PC.value & 0xF0000000) | (addr << 2)
+
+                print("Executed instruction:", result)
                 
-                elif inst.type == 2:  # J-type instruction
-                    addr = int(inst.address, 2)
-                    
-                    if inst.op[3:] == '000010':  # j instruction
-                        self.pc = (self.pc & 0xF0000000) | (addr << 2)
-                    elif inst.op[3:] == '000011':  # jal instruction
-                        self.registers.write(31, self.pc + 4)  # Write return address
-                        self.pc = (self.pc & 0xF0000000) | (addr << 2)
-                        
+                # Put the result in the EX_MEM queue
+                self.EX_MEM.put(result)
                 self.execute_done.set()
     
     def memory_access_stage(self):
         """Handles memory operations and passes results to write-back stage."""
         while True:
             if not self.EX_MEM.empty():
-                execute_data = self.EX_MEM.get()
-                result, dest_reg, inst_type = execute_data['ALU_result'], execute_data['dest_reg'], execute_data['inst_type']
-                mem_data = None
-                if inst_type == "load":
-                    mem_data = self.memory.load(result)
-                elif inst_type == "store":
-                    with self.register_lock:
-                        self.memory.store(result, self.registers.read(dest_reg))
-                self.MEM_WB.put({'mem_data': mem_data, 'ALU_result': result, 'dest_reg': dest_reg})
+                inst = self.EX_MEM.get('instruction')
+
+                if inst['type'] == 1 and inst['op'][:3] == "100":  # Load instruction
+                    address = self.EX_MEM['ALU_result']
+                    mem_data = "".join(self.memory.load_byte(address + i) for i in range(4))  # Load 4 bytes
+                    self.MEM_WB['Mem_data'] = mem_data
+                    self.MEM_WB['RegDst'] = self.EX_MEM['RD']
+                
+                elif inst['type'] == 1 and inst['op'][:3] == "101":  # Store instruction
+                    address = self.EX_MEM['ALU_result']
+                    store_data = self.EX_MEM['RT']
+                    for i in range(4):
+                        self.memory.store(store_data[i*8:(i+1)*8], address + i)  # Store each byte individually
+
+                else:  # No memory access, pass ALU result
+                    self.MEM_WB['ALU_result'] = self.EX_MEM['ALU_result']
+                    self.MEM_WB['RegDst'] = self.EX_MEM['RD']
+                
+                self.MEM_WB['instruction'] = inst
+                self.MEM_WB.put(self.MEM_WB)
                 self.memory_done.set()
     
     def write_back_stage(self):
         """Writes data back to registers if necessary."""
         while True:
+            # Retrieve data from MEM_WB queue
             if not self.MEM_WB.empty():
-                mem_data = self.MEM_WB.get()
-                dest_reg = mem_data['dest_reg']
-                if dest_reg is not None:
-                    with self.register_lock:
-                        self.registers.write(dest_reg, mem_data['mem_data'] if mem_data['mem_data'] else mem_data['ALU_result'])
+                wb = self.MEM_WB.get()
+
+                # Check for end signal
+                if wb is None:  # If None is received, break the loop
+                    break
+
+                inst = wb.get('instruction')
+                reg_dst = wb.get('RegDst')
+                
+                # Perform the write-back operation
+                if inst['type'] == 1 and inst['op'][:3] == "100":  # Load instruction
+                    self.registers.write(reg_dst, wb['Mem_data'])
+                elif inst['type'] in [0, 1]:  # R-type or I-type ALU instruction
+                    self.registers.write(reg_dst, wb['ALU_result'])
     
     def run_pipeline(self):
         """Starts and manages pipeline stages as parallel processes."""
