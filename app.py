@@ -1,73 +1,69 @@
 import streamlit as st
-from components.registers import Registers
-from components.alu import ALU
-from components.memory import Memory
-from instructions import Instruction
-from MIPS_parser import MIPSParser
-from MIPSPipeline import MIPSPipeline  # Assuming MIPSPipeline class is in a separate file
+from MIPSPipeline import MIPSPipeline
+from utils.assembler import MIPSAssembler, parse_asm
+import tempfile
+import os
 
-# Initialize MIPS Pipeline with a default file
-mips_pipeline = MIPSPipeline(file_path="assets/binary.txt")
+def main():
+    st.title("MIPS Pipeline Simulator")
+    st.write("Upload a MIPS assembly file to simulate the pipeline stages.")
 
-# Sidebar for controls
-st.sidebar.title("MIPS Processor Pipeline Controls")
-run_pipeline = st.sidebar.button("Run Entire Pipeline")
-step_pipeline = st.sidebar.button("Step Pipeline")
-reset_pipeline = st.sidebar.button("Reset Pipeline")
+    # File uploader for MIPS assembly file
+    uploaded_file = st.file_uploader("Choose a MIPS assembly file", type="asm")
 
-# Pipeline state headers
-st.title("MIPS Processor Pipeline Simulator")
+    if uploaded_file is not None:
+        # Read the uploaded file
+        asm_code = uploaded_file.read().decode("utf-8")
+        
+        # Parse and assemble MIPS instructions
+        assembler = MIPSAssembler()
+        instructions = asm_code.splitlines()
+        
+        # Assemble each instruction and collect binary code
+        binary_code = []
+        st.subheader("Assembly to Binary Conversion")
+        for instruction in instructions:
+            if instruction.strip() and not instruction.strip().startswith('#'):
+                try:
+                    hex_code, binary = assembler.assemble(instruction)
+                    binary_code.append(binary)
+                    st.write(f"{instruction:<25} -> {hex_code:<12} {binary}")
+                except ValueError as e:
+                    st.write(f"Error in instruction '{instruction}': {e}")
+        
+        # Combine binary code into one string (if needed for the pipeline)
+        binary_code_str = "\n".join(binary_code)
+        
+        # Save binary code temporarily
+        with tempfile.NamedTemporaryFile(delete=False, mode='w') as tmp_file:
+            tmp_file.write(binary_code_str)
+            file_path = tmp_file.name
 
-# Display pipeline stages
-st.header("Pipeline Stages")
-st.subheader("Fetch Stage")
-fetch_stage_text = st.empty()
-st.subheader("Decode Stage")
-decode_stage_text = st.empty()
-st.subheader("Execute Stage")
-execute_stage_text = st.empty()
-st.subheader("Memory Access Stage")
-memory_access_stage_text = st.empty()
-st.subheader("Write-Back Stage")
-write_back_stage_text = st.empty()
+        # Initialize and run MIPS pipeline
+        pipeline = MIPSPipeline(file_path)
 
-# Display registers and memory state
-st.header("Registers")
-register_display = st.empty()
-st.header("Memory")
-memory_display = st.empty()
+        if st.button("Run Simulation"):
+            st.write("Running pipeline simulation...")
+            
+            # Run the pipeline
+            pipeline.run_pipeline()
+            
+            # Display initial and final state of registers
+            st.subheader("Initial Register State")
+            st.write(pipeline.registers.reg)
+            
+            st.subheader("Final Register State")
+            st.write(pipeline.registers.reg)
+            
+            # Display register states after each instruction
+            st.subheader("Register States After Each Instruction")
+            for i, state in enumerate(pipeline.register_states):
+                st.write(f"**Instruction {i+1}**")
+                st.write(state)
+                st.write("---")  # Divider for clarity
+            
+        # Clean up temporary file after use
+        os.remove(file_path)
 
-# Display PC and hazard management
-st.header("Program Counter (PC)")
-pc_display = st.empty()
-
-# Function to update each stage display
-def update_stages(pipeline):
-    fetch_stage_text.text(f"Fetch: {pipeline.IF_ID if not pipeline.IF_ID.empty() else 'Idle'}")
-    decode_stage_text.text(f"Decode: {pipeline.ID_EX if not pipeline.ID_EX.empty() else 'Idle'}")
-    execute_stage_text.text(f"Execute: {pipeline.EX_MEM if not pipeline.EX_MEM.empty() else 'Idle'}")
-    memory_access_stage_text.text(f"Memory Access: {pipeline.MEM_WB if not pipeline.MEM_WB.empty() else 'Idle'}")
-    write_back_stage_text.text(f"Write Back: Completed" if pipeline.write_done.is_set() else "Write Back: Idle")
-
-# Function to update register and memory states
-def update_components(pipeline):
-    register_display.text(str(pipeline.registers.reg))
-    memory_display.text(str(pipeline.memory.data))
-    pc_display.text(f"PC: {pipeline.PC.value}")
-
-# Execute Pipeline Steps
-if run_pipeline:
-    mips_pipeline.run_pipeline()
-    update_components(mips_pipeline)
-elif step_pipeline:
-    # Run the pipeline step-by-step and update displays
-    if not mips_pipeline.fetch_stage():
-        st.write("Program has completed execution.")
-    else:
-        update_components(mips_pipeline)
-        update_stages(mips_pipeline)
-elif reset_pipeline:
-    # Re-initialize the pipeline for a fresh start
-    mips_pipeline = MIPSPipeline(file_path="assets/binary.txt")
-    st.write("Pipeline has been reset.")
-    update_components(mips_pipeline)
+if __name__ == "__main__":
+    main()
