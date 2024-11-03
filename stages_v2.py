@@ -16,7 +16,6 @@ class MIPSProcessor:
         self.ID_EX = {'instruction': None, 'RD_1': None, 'RD_2': None, 'Immediate': None, 'PC': None}
         self.EX_MEM = {'ALU_result': None, 'RD_2': None, 'RegDst': None, 'instruction': None}
         self.MEM_WB = {'ALU_result': None, 'Mem_data': None, 'RegDst': None, 'instruction': None}
-        
     def fetch(self):
         # Fetches an instruction from memory at PC
         instr = ""
@@ -140,7 +139,7 @@ class MIPSProcessor:
 
 # Example usage
 if __name__ == "__main__":
-    file_path = "assets\\binary_2.txt"
+    file_path = "assets\\binary.txt"
     memory = Memory(initialise=True)
     alu = ALU()
     registers = Registers(initialise=True)
