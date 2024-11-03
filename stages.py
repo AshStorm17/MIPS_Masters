@@ -9,6 +9,12 @@ from multiprocessing import Process, Queue, Event, Value
 from ctypes import c_bool
 import time
 
+import multiprocessing as mp
+from queue import Empty
+from multiprocessing import Process, Queue, Event, Value
+from ctypes import c_bool
+import time
+
 class PipelinedProcessor:
     def __init__(self, mem, alu, reg):
         self.memory = mem
@@ -25,9 +31,51 @@ class PipelinedProcessor:
         self.EX_MEM_queue = Queue()
         self.MEM_WB_queue = Queue()
         
+        # Forwarding queues
+        self.EX_forwarding = Queue()  # For EX to EX forwarding
+        self.MEM_forwarding = Queue() # For MEM to EX forwarding
+        
         # Pipeline control events
         self.fetch_done = Event()
         self.all_done = Event()
+
+    def check_data_hazard(self, rs, rt, ex_mem_data, mem_wb_data):
+        """
+        Check for data hazards and determine forwarding paths
+        Returns: (forward_a, forward_b)
+        forward_a/b: 0 (no forwarding), 1 (from MEM), 2 (from WB)
+        """
+        forward_a = 0  # For rs
+        forward_b = 0  # For rt
+        
+        # EX/MEM hazard
+        if ex_mem_data and 'RegDst' in ex_mem_data:
+            if rs == ex_mem_data['RegDst'] and rs != 0:
+                forward_a = 1
+            if rt == ex_mem_data['RegDst'] and rt != 0:
+                forward_b = 1
+                
+        # MEM/WB hazard
+        elif mem_wb_data and 'RegDst' in mem_wb_data:
+            if rs == mem_wb_data['RegDst'] and rs != 0:
+                forward_a = 2
+            if rt == mem_wb_data['RegDst'] and rt != 0:
+                forward_b = 2
+                
+        return forward_a, forward_b
+
+    def get_forwarded_value(self, reg_num, forward_signal, ex_mem_data, mem_wb_data):
+        """Get the forwarded value based on forwarding signal"""
+        if forward_signal == 0:
+            return self.registers.read(reg_num)
+        elif forward_signal == 1 and ex_mem_data:
+            return ex_mem_data.get('ALU_result', None)
+        elif forward_signal == 2 and mem_wb_data:
+            if 'Mem_data' in mem_wb_data:
+                return mem_wb_data['Mem_data']
+            return mem_wb_data.get('ALU_result', None)
+        return None
+    
     def is_halt_instruction(self, IR):
         """Check if an instruction is a halt instruction (`syscall` or `jr $ra`)."""
         opcode = int(IR[:6], 2)
@@ -77,7 +125,6 @@ class PipelinedProcessor:
                 print(f"Fetch stage error: {e}")
                 break
         
-        # Signal fetch completion
         self.fetch_done.set()
 
     def decode_stage(self):
@@ -97,12 +144,16 @@ class PipelinedProcessor:
                 else:
                     decoded_inst = Instruction(type=1, instruction=inst)
                 
+                # Get register numbers for hazard detection
+                rs = int(decoded_inst.rs, 2) if hasattr(decoded_inst, 'rs') else None
+                rt = int(decoded_inst.rt, 2) if hasattr(decoded_inst, 'rt') else None
+                
                 # Prepare ID/EX data
                 id_ex_data = {
                     'instruction': decoded_inst,
                     'PC': if_id_data['PC'],
-                    'RD_1': self.registers.read(int(decoded_inst.rs, 2)),
-                    'RD_2': self.registers.read(int(decoded_inst.rt, 2))
+                    'rs': rs,
+                    'rt': rt
                 }
                 
                 # Handle immediate value for I-type instructions
@@ -116,7 +167,7 @@ class PipelinedProcessor:
                 self.ID_EX_queue.put(id_ex_data)
                 print("Decode Stage:", id_ex_data)
                 
-                time.sleep(0.1)  # Simulate clock cycle
+                time.sleep(0.1)
                 
             except Empty:
                 continue
@@ -125,19 +176,29 @@ class PipelinedProcessor:
                 continue
 
     def execute_stage(self):
-        """Execute stage process"""
+        """Execute stage process with forwarding"""
+        ex_mem_data = None
+        mem_wb_data = None
+        
         while not (self.fetch_done.is_set() and self.ID_EX_queue.empty()):
             try:
                 # Get instruction from ID/EX queue
                 id_ex_data = self.ID_EX_queue.get(timeout=0.1)
                 inst = id_ex_data['instruction']
                 
+                # Check for forwarding needs
+                rs = id_ex_data.get('rs')
+                rt = id_ex_data.get('rt')
+                forward_a, forward_b = self.check_data_hazard(rs, rt, ex_mem_data, mem_wb_data)
+                
+                # Get forwarded values if needed
+                src1 = self.get_forwarded_value(rs, forward_a, ex_mem_data, mem_wb_data)
+                src2 = self.get_forwarded_value(rt, forward_b, ex_mem_data, mem_wb_data)
+                
                 ex_mem_data = {'instruction': inst}
                 
-                # Execute based on instruction type
+                # Execute based on instruction type with forwarded values
                 if inst.type == 0:  # R-type
-                    src1 = id_ex_data['RD_1']
-                    src2 = id_ex_data['RD_2']
                     if inst.funct == '001000':  # jr
                         with self.pc.get_lock():
                             self.pc.value = src1
@@ -151,25 +212,24 @@ class PipelinedProcessor:
                     })
                 
                 elif inst.type == 1:  # I-type
-                    src1 = id_ex_data['RD_1']
-                    imm = id_ex_data['Immediate']
+                    imm = id_ex_data.get('Immediate')
                     if inst.op[:3] == "100":  # load
                         address = self.alu.giveAddr(src1, imm)
                         ex_mem_data.update({
                             'ALU_result': address,
-                            'RegDst': int(inst.rt, 2)
+                            'RegDst': rt
                         })
                     elif inst.op[:3] == "101":  # store
                         address = self.alu.giveAddr(src1, imm)
                         ex_mem_data.update({
                             'ALU_result': address,
-                            'RD_2': id_ex_data['RD_2']
+                            'RD_2': src2
                         })
-                    else:
+                    else:  # immediate arithmetic
                         result = self.alu.alu_arith_i(inst.op[3:6], src1, imm)
                         ex_mem_data.update({
                             'ALU_result': result,
-                            'RegDst': int(inst.rt, 2)
+                            'RegDst': rt
                         })
                 
                 elif inst.type == 2:  # J-type
@@ -182,11 +242,13 @@ class PipelinedProcessor:
                         with self.pc.get_lock():
                             self.pc.value = (self.pc.value & 0xF0000000) | (addr << 2)
                 
-                # Put executed data in EX/MEM queue
+                # Update forwarding data
+                ex_mem_data = ex_mem_data
                 self.EX_MEM_queue.put(ex_mem_data)
                 print("Execute Stage:", ex_mem_data)
+                print(f"Forwarding: A={forward_a}, B={forward_b}")
                 
-                time.sleep(0.1)  # Simulate clock cycle
+                time.sleep(0.1)
                 
             except Empty:
                 continue
@@ -196,6 +258,8 @@ class PipelinedProcessor:
 
     def memory_stage(self):
         """Memory stage process"""
+        mem_wb_data = None
+        
         while not (self.fetch_done.is_set() and self.EX_MEM_queue.empty()):
             try:
                 # Get instruction from EX/MEM queue
@@ -224,11 +288,11 @@ class PipelinedProcessor:
                         'RegDst': ex_mem_data['RegDst']
                     })
                 
-                # Put memory stage data in MEM/WB queue
+                # Update forwarding data
                 self.MEM_WB_queue.put(mem_wb_data)
                 print("Memory Stage:", mem_wb_data)
                 
-                time.sleep(0.1)  # Simulate clock cycle
+                time.sleep(0.1)
                 
             except Empty:
                 continue
@@ -256,7 +320,7 @@ class PipelinedProcessor:
                     'Value': self.registers.read(reg_dst)
                 })
                 
-                time.sleep(0.1)  # Simulate clock cycle
+                time.sleep(0.1)
                 
             except Empty:
                 continue
@@ -266,7 +330,6 @@ class PipelinedProcessor:
 
     def pipelined(self):
         """Start the pipelined processor with parallel stages"""
-        # Create processes for each pipeline stage
         processes = [
             Process(target=self.fetch_stage),
             Process(target=self.decode_stage),
@@ -275,17 +338,14 @@ class PipelinedProcessor:
             Process(target=self.writeback_stage)
         ]
         
-        # Start all processes
         for p in processes:
             p.start()
         
-        # Wait for all processes to complete
         for p in processes:
             p.join()
         
         if self.halt.value:
             print("Processor has halted.")
-
 # # Example usage
 # if __name__ == "__main__":
 #     file_path = "assets\\binary_2.txt"
