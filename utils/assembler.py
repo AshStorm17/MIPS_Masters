@@ -1,53 +1,95 @@
 class MIPSAssembler:
     def __init__(self):
         # Instruction type formats
-        self.r_format = {'add': '100000', 'sub': '100010', 'and': '100100', 
-                        'or': '100101', 'slt': '101010', 'nor': '100111',
-                        'sll': '000000', 'srl': '000010'}
+        self.r_format = {
+            'add': '100000', 'sub': '100010', 'and': '100100', 'or': '100101', 'slt': '101010', 'nor': '100111',
+            'sll': '000000', 'srl': '000010', 'sra': '000011', 'sltu': '101011', 'div': '011010', 'mult': '011000',
+            'jr': '001000', 'xor': '100110', 'nor': '100111', 'mfhi': '010000', 'mflo': '010010', 'mthi': '010001', 'mtlo': '010011'
+        }
         
-        self.i_format = {'addi': '001000', 'andi': '001100', 'ori': '001101',
-                        'beq': '000100', 'bne': '000101', 'lw': '100011',
-                        'sw': '101011', 'slti': '001010'}
+        self.i_format = {
+            'addi': '001000', 'andi': '001100', 'ori': '001101', 'beq': '000100', 'bne': '000101', 'lw': '100011',
+            'sw': '101011', 'slti': '001010', 'xori': '001110', 'lui': '001111', 'sltiu': '001011', 'bgez': '000001',
+            'bgtz': '000111', 'blez': '000110', 'bltz': '000001', 
+            'lh': '100001', 'lhu': '100101', 'lb': '100000', 'lbu': '100100', 
+            'sh': '101001', 'sb': '101000', 'syscall': '000000'  # Syscall opcode
+        }
         
         self.j_format = {'j': '000010', 'jal': '000011'}
         
         # Register mappings
         self.registers = {
-            '$zero': '00000', '$at': '00001',
-            '$v0': '00010', '$v1': '00011',
-            '$a0': '00100', '$a1': '00101', '$a2': '00110', '$a3': '00111',
-            '$t0': '01000', '$t1': '01001', '$t2': '01010', '$t3': '01011',
-            '$t4': '01100', '$t5': '01101', '$t6': '01110', '$t7': '01111',
-            '$s0': '10000', '$s1': '10001', '$s2': '10010', '$s3': '10011',
-            '$s4': '10100', '$s5': '10101', '$s6': '10110', '$s7': '10111',
-            '$t8': '11000', '$t9': '11001', '$k0':'11010','$k1':'11011',
-            '$gp': '11100', '$sp': '11101', '$fp': '11110', '$ra': '11111'
+            '$zero': '00000', '$at': '00001', '$v0': '00010', '$v1': '00011', '$a0': '00100', '$a1': '00101', '$a2': '00110', '$a3': '00111',
+            '$t0': '01000', '$t1': '01001', '$t2': '01010', '$t3': '01011', '$t4': '01100', '$t5': '01101', '$t6': '01110', '$t7': '01111',
+            '$s0': '10000', '$s1': '10001', '$s2': '10010', '$s3': '10011', '$s4': '10100', '$s5': '10101', '$s6': '10110', '$s7': '10111',
+            '$t8': '11000', '$t9': '11001', '$k0':'11010','$k1':'11011', '$gp': '11100', '$sp': '11101', '$fp': '11110', '$ra': '11111'
         }
 
-    def decimal_to_binary(self, decimal, bits):
-        """Convert decimal to binary with specified number of bits"""
+    def decimal_to_binary(self, value, bits):
+        """Convert decimal or hexadecimal string to binary with specified number of bits"""
+        if isinstance(value, str):
+            if value.startswith('0x') or value.startswith('0X'):  # If value is hex
+                decimal = int(value, 16)
+            else:  # If value is decimal
+                decimal = int(value)
+        else:
+            decimal = value
+
         if decimal < 0:
             # Handle negative numbers using 2's complement
             decimal = (1 << bits) + decimal
         binary = bin(decimal)[2:].zfill(bits)
         return binary[-bits:]
 
-    def parse_instruction(self, instruction):
-        """Parse MIPS instruction into components"""
+    def parse_instruction(self, instruction, labels):
+        """Parse MIPS instruction into components and resolve labels"""
+        instruction = instruction.split('#')[0].strip()
         parts = instruction.replace(',', '').split()
         op = parts[0].lower()
         operands = parts[1:]
+
+        # Check if the last operand is a label and replace it with the resolved address/offset
+        if operands and operands[-1] in labels:
+            operands[-1] = str(labels[operands[-1]])  # Resolve label to its corresponding address or offset
         return op, operands
+
+    def resolve_labels(self, instructions):
+        """First pass: Resolve label addresses in the instruction list"""
+        labels = {}
+        resolved_instructions = []
+        line_number = 0
+
+        # Identify labels and store their line numbers
+        for instruction in instructions:
+            if ':' in instruction:  # It's a label
+                label = instruction.split(':')[0].strip()
+                labels[label] = line_number
+                continue  # Skip the label itself, don't add it as an instruction
+            else:
+                resolved_instructions.append(instruction)
+                line_number += 1
+
+        # Second pass: Replace labels with their resolved addresses
+        for i, instruction in enumerate(resolved_instructions):
+            op, operands = self.parse_instruction(instruction, labels)
+            resolved_instructions[i] = f"{op} " + ", ".join(operands)
+        
+        return resolved_instructions, labels
 
     def assemble_r_format(self, op, operands):
         """Convert R-format instruction to machine code"""
         opcode = '000000'
         
-        if op in ['sll', 'srl']:
+        if op in ['sll', 'srl', 'sra']:
             rd = self.registers[operands[0]]
             rt = self.registers[operands[1]]
             shamt = self.decimal_to_binary(int(operands[2]), 5)
             rs = '00000'
+        elif op == 'jr':
+            rs = self.registers[operands[0]]
+            rt = '00000'
+            rd = '00000'
+            shamt = '00000'
         else:
             rd = self.registers[operands[0]]
             rs = self.registers[operands[1]]
@@ -62,17 +104,21 @@ class MIPSAssembler:
         """Convert I-format instruction to machine code"""
         opcode = self.i_format[op]
         
-        if op in ['lw', 'sw']:
+        if op in ['lw', 'sw', 'lh', 'lhu', 'lb', 'lbu', 'sh', 'sb']:
             rt = self.registers[operands[0]]
             # Parse offset and base register from memory operand
             offset, base = operands[1].split('(')
             base = base.rstrip(')')
             rs = self.registers[base]
-            immediate = self.decimal_to_binary(int(offset), 16)
+            immediate = self.decimal_to_binary(offset, 16)
+        elif op in ['bgez', 'bgtz', 'blez', 'bltz']:
+            rs = self.registers[operands[0]]
+            rt = '00000'
+            immediate = self.decimal_to_binary(operands[1], 16)
         else:
             rt = self.registers[operands[0]]
             rs = self.registers[operands[1]]
-            immediate = self.decimal_to_binary(int(operands[2]), 16)
+            immediate = self.decimal_to_binary(operands[2], 16)
         
         machine_code = opcode + rs + rt + immediate
         return machine_code
@@ -84,22 +130,32 @@ class MIPSAssembler:
         machine_code = opcode + address
         return machine_code
 
-    def assemble(self, instruction):
+    def assemble_syscall(self):
+        """Convert syscall to machine code"""
+        return '00000000000000000000000000001100'  # Syscall in R-format with funct code 0xC
+
+    def assemble(self, instructions):
         """Convert MIPS instruction to machine code"""
-        op, operands = self.parse_instruction(instruction)
+        instructions, labels = self.resolve_labels(instructions)
+        machine_codes = []
+        for instruction in instructions:
+            op, operands = self.parse_instruction(instruction, labels)
+            if op == 'syscall':
+                binary = self.assemble_syscall()
+            elif op in self.r_format:
+                binary = self.assemble_r_format(op, operands)
+            elif op in self.i_format:
+                binary = self.assemble_i_format(op, operands)
+            elif op in self.j_format:
+                binary = self.assemble_j_format(op, operands)
+            else:
+                raise ValueError(f"Unknown instruction: {op}")
+            
+            # Convert binary to hexadecimal
+            hex_code = hex(int(binary, 2))[2:].zfill(8)
+            machine_codes.append(f"0x{hex_code}  {binary}")
         
-        if op in self.r_format:
-            binary = self.assemble_r_format(op, operands)
-        elif op in self.i_format:
-            binary = self.assemble_i_format(op, operands)
-        elif op in self.j_format:
-            binary = self.assemble_j_format(op, operands)
-        else:
-            raise ValueError(f"Unknown instruction: {op}")
-        
-        # Convert binary to hexadecimal
-        hex_code = hex(int(binary, 2))[2:].zfill(8)
-        return f"0x{hex_code}", binary
+        return machine_codes, labels
 
 def parse_asm(file_path):
     instructions = []
@@ -110,38 +166,22 @@ def parse_asm(file_path):
             if line and not line.startswith('#'):  # Exclude comments if any
                 instructions.append(line)
     return instructions
-# Example usage
-
 
 def main():
     assembler = MIPSAssembler()
     
-    # Test instructions
-    test_instructions=parse_asm("assets\mipsasm.asm")
-
-    # test_instructions = [
-    #     "add $t1, $s1, $s2",
-    #     "sll $t2, $t0, 2",
-    #     "addi $s0, $t1, -3",
-    #     "lw $t0, 4($s0)",
-    #     "sw $t1, 8($s2)",
-    #     "beq $t0, $t1, 16",
-    #     "j 1000" 
-    # ]
-    
-
+    # Replace with the path to your assembly code file
+    test_instructions = parse_asm("../assets/mipsasm.asm")
 
     print("MIPS Assembly to Machine Code Conversion:")
     print("-" * 60)
     print(f"{'Instruction':<25} {'Hex':<12} Binary")
     print("-" * 60)
+
+    machine_codes, labels = assembler.assemble(test_instructions)
     
-    for instruction in test_instructions:
-        try:
-            hex_code, binary = assembler.assemble(instruction)
-            print(f"{instruction:<25} {hex_code:<12} {binary}")
-        except ValueError as e:
-            print(f"Error: {e}")
+    for machine_code in machine_codes:
+        print(machine_code)
 
 if __name__ == "__main__":
     main()
