@@ -18,43 +18,41 @@ class HazardManager:
         self.mem_wb_reg_dst = mem_wb_reg_dst
         self.mem_wb_forwarding_data = mem_wb_forwarding_data
 
-    def check_data_hazard(self, rs, rt):
+    def check_data_hazard(self, rs, rt, ex_mem_data, mem_wb_data):
         """
-        Check for data hazards in the decode and execute stages.
-        Returns: (forward_a, forward_b, stall)
-        forward_a/b: 0 (no forwarding), 1 (from EX), 2 (from MEM)
-        stall: Boolean indicating if the pipeline should stall.
+        Check for data hazards and determine forwarding paths
+        Returns: (forward_a, forward_b)
+        forward_a/b: 0 (no forwarding), 1 (from MEM), 2 (from WB)
         """
-        forward_a = 0  # Forwarding option for rs
-        forward_b = 0  # Forwarding option for rt
-        stall = False
-
-        # Check EX/MEM forwarding possibility
-        if self.ex_mem_reg_dst is not None:
-            if rs == self.ex_mem_reg_dst and rs != 0:
+        forward_a = 0  # For rs
+        forward_b = 0  # For rt
+        
+        # EX/MEM hazard
+        if ex_mem_data and 'RegDst' in ex_mem_data:
+            if rs == ex_mem_data['RegDst'] and rs != 0:
                 forward_a = 1
-            if rt == self.ex_mem_reg_dst and rt != 0:
+            if rt == ex_mem_data['RegDst'] and rt != 0:
                 forward_b = 1
-
-        # Check MEM/WB forwarding possibility if EX/MEM not used
-        if self.mem_wb_reg_dst is not None:
-            if forward_a == 0 and rs == self.mem_wb_reg_dst and rs != 0:
+                
+        # MEM/WB hazard
+        elif mem_wb_data and 'RegDst' in mem_wb_data:
+            if rs == mem_wb_data['RegDst'] and rs != 0:
                 forward_a = 2
-            if forward_b == 0 and rt == self.mem_wb_reg_dst and rt != 0:
+            if rt == mem_wb_data['RegDst'] and rt != 0:
                 forward_b = 2
+                
+        return forward_a, forward_b
 
-        # Hazard requiring stall: Check for load-use data hazard
-        if self.ex_mem_reg_dst == rs or self.ex_mem_reg_dst == rt:
-            stall = True  # Stall for load-use hazards only
-
-        return forward_a, forward_b, stall
-
-    def get_forwarded_value(self, reg_num, forward_signal):
-        """Get the forwarded value based on the forwarding signal."""
-        if forward_signal == 1:
-            return self.ex_mem_forwarding_data
-        elif forward_signal == 2:
-            return self.mem_wb_forwarding_data
+    def get_forwarded_value(self, reg_num, forward_signal, ex_mem_data, mem_wb_data):
+        """Get the forwarded value based on forwarding signal"""
+        if forward_signal == 0:
+            return self.registers.read(reg_num)
+        elif forward_signal == 1 and ex_mem_data:
+            return ex_mem_data.get('ALU_result', None)
+        elif forward_signal == 2 and mem_wb_data:
+            if 'Mem_data' in mem_wb_data:
+                return mem_wb_data['Mem_data']
+            return mem_wb_data.get('ALU_result', None)
         return None
     
     def reset(self):

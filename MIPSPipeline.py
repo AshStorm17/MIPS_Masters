@@ -4,7 +4,6 @@ from components.alu import ALU
 from components.memory import Memory
 from instructions import Instruction
 from MIPS_parser import MIPSParser
-from hazard import HazardManager
 
 class MIPSPipeline:
     def __init__(self, file_path):
@@ -26,7 +25,6 @@ class MIPSPipeline:
         
         # Register and memory locks
         self.register_lock = multiprocessing.Lock()
-        self.hazard_manager = HazardManager()
 
         # Synchronization events for pipeline control
         self.fetch_done = multiprocessing.Event()
