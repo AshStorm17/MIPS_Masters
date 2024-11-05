@@ -1,24 +1,23 @@
-# --------------------------------------------
-# Memory class
-    # byte addressing
-    # separate spaces for instructions, data, I/O
 class Memory:
     def __init__(self, initialise=False):
-        self.data = [""]*4*1024 # 1024 words
+        self.data = [""]*4*1024 # 1024 words # byte addressing
         if initialise==True:
             self.data = [format(0, '008b')]*4*1024 # initialise with all 0's
 
-    def store(self, addr, value):
-        self.data[addr]=value[:8]
-        self.data[addr+1]=value[8:16]
-        self.data[addr+2]=value[16:24]
-        self.data[addr+3]=value[24:32]
+    # stores a byte
+    def store(self, addr, value): 
+        self.data[addr]=value
 
-    def load_byte(self, addr):
+    # loads a byte
+    def load(self, addr):
         return self.data[addr]
-    # function for I/O access
-    def fillOutput(self):
-        pass
+    
+    def fillOutput(self, addr, wordData):
+        """Memory mapped I/O"""
+        # Reserve address 2000-2019 for display output (4 words for output)
+        # Assumed: used only through store word instruction onto these words in the memory
+        for i in range(4):
+            self.data[addr+i] = wordData[i*8:(i+1)*8]
 
     def clear_data(self):
         self.data = [""]*4*1024
