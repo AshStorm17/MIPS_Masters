@@ -1,15 +1,17 @@
 # -------------------------------------------
 # ALU class and operations
-def signedVal(num):
-    """Convert a signed integer to its value based on 2's complement representation."""
-    return num - ((num >> 31) & 1) * (1 << 32)
+def signedVal(binStr):
+    isSigned = int(binStr[0]=="1")
+    return int(binStr, 2) - isSigned*(2**len(binStr))
 
 def signedBin(num):
-    """Return the 2's complement binary string of a given integer."""
-    if num < 0:
-        return bin(num % (1 << 32))[2:]
-    return format(num & (1 << 32) - 1, '032b')  # Ensure it fits in 32 bits
-
+    # return 2's complement binary string of length 32
+    ans=""  
+    if(num<0):
+        ans = bin(num % (1<<32))[2:]
+    else:
+        ans = format(num, '032b')
+    return ans
 # ---------------------------
 
 class ALU:
@@ -28,21 +30,24 @@ class ALU:
 
     def alu_arith(self, operation, opr1, opr2):
         """Perform arithmetic operations."""
+        opr1 = signedBin(opr1)
+        opr2 = signedBin(opr2)
         match operation:
-            case "100000":  # add
-                return signedVal(opr1 + opr2)
-            case "100010":  # sub
-                return signedVal(opr1 - opr2)
-            case "100100":  # and
-                return opr1 & opr2
-            case "100101":  # or
-                return opr1 | opr2
-            case "101010":  # slt
-                return 1 if signedVal(opr1) < signedVal(opr2) else 0
-            case "101011":  # sltu
-                return 1 if (opr1 < opr2) else 0
-            case "100111":  # nor
-                return ~(opr1 | opr2) & 0xFFFFFFFF  # Mask to ensure it fits in 32 bits
+            case "100000": # add
+                ans = signedBin(signedVal(opr1) + signedVal(opr2))
+            case "100010": # sub
+                ans = signedBin(signedVal(opr1) - signedVal(opr2))
+            case "100100": # and
+                ans = signedVal(opr1) & signedVal(opr2)
+            case "100101": # or
+                ans = signedVal(opr1) | signedVal(opr2)
+            case "101010": #slt 
+                ans = format(int(signedVal(opr1) < signedVal(opr2)), "032b")
+            case "101011": # sltu
+                ans = format(int(int(opr1,2) < int(opr2,2)), "032b")
+            case "100111": # nor
+                ans = format(~(signedVal(opr1) | signedVal(opr2)), "032b")
+        return signedVal(ans)
 
     def alu_arith_i(self, operation, src, immediate):
         """Perform immediate arithmetic operations."""

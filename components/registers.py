@@ -1,3 +1,16 @@
+def signedVal(binStr):
+    isSigned = int(binStr[0]=="1")
+    return int(binStr, 2) - isSigned*(2**len(binStr))
+
+def signedBin(num):
+    # return 2's complement binary string of length 32
+    ans=""  
+    if(num<0):
+        ans = bin(num % (1<<32))[2:]
+    else:
+        ans = format(num, '032b')
+    return ans
+
 class Registers:
     def __init__(self, initialise=False):
         self.reg = [""] * 32  # 32 registers
@@ -11,17 +24,18 @@ class Registers:
         if initialise:
             for i in range(1, 29):
                 self.reg[i] = format(0, '032b')  # Initialize s0-s7 and temporaries with 0's
-            self.reg[16] = format(5, '032b')  # $s0 = 5
-            self.reg[17] = format(10, '032b')  # $s1 = 10
-            self.reg[18] = format(1, '032b')  # $s2 = 1
+            self.reg[8] = format(5, '032b')  # $t0 = 5
+            self.reg[9] = format(10, '032b')  # $t1 = 10
+            self.reg[10] = format(1, '032b')  # $t2 = 1
+            self.reg[12] = format(20, '032b')  # $t4 = 20
 
     def write(self, number, value):
         if number==0: # skip writing to $0
             return
-        self.reg[number] = format(value, '032b')  # Store value as binary string
+        self.reg[number] = signedBin(value)  # Store value as binary string
 
     def read(self, number):
-        return int(self.reg[number], 2)  # Convert binary string to integer
+        return signedVal(self.reg[number])  # Convert binary string to integer
 
     def reset(self, initialise=False):
         """Reset all registers to their initial state."""
