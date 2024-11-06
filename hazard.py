@@ -48,11 +48,11 @@ class HazardManager:
         if forward_signal == 0:
             return self.registers.read(reg_num)
         elif forward_signal == 1 and ex_mem_data:
-            return ex_mem_data.get('ALU_result', None)
+            return ex_mem_data['ALU_result']
         elif forward_signal == 2 and mem_wb_data:
             if 'Mem_data' in mem_wb_data:
                 return mem_wb_data['Mem_data']
-            return mem_wb_data.get('ALU_result', None)
+            return mem_wb_data['ALU_result']
         return None
     
     def reset(self):
