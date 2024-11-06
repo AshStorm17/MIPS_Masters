@@ -16,6 +16,8 @@ class Registers:
             self.reg[18] = format(1, '032b')  # $s2 = 1
 
     def write(self, number, value):
+        if number==0: # skip writing to $0
+            return
         self.reg[number] = format(value, '032b')  # Store value as binary string
 
     def read(self, number):
