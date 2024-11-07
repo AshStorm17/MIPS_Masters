@@ -1,4 +1,3 @@
-add $3, $1, $2
-add $4, $2, $3
-beq $4, $2, end
-jr $ra
+add $t0, $t1, $t2       # $t0 = $t1 + $t2
+sub $t3, $t4, $t5       # $t3 = $t4 - $t5
+syscall

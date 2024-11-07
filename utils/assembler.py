@@ -157,21 +157,21 @@ class MIPSAssembler:
         
         return machine_codes, labels
 
-def parse_asm(file_path):
-    instructions = []
-    with open(file_path, 'r') as file:
-        for line in file:
-            # Strip whitespace and ignore empty lines or comments
-            line = line.strip()
-            if line and not line.startswith('#'):  # Exclude comments if any
-                instructions.append(line)
-    return instructions
+    def parse_asm(self, file_path):
+        instructions = []
+        with open(file_path, 'r') as file:
+            for line in file:
+                # Strip whitespace and ignore empty lines or comments
+                line = line.strip()
+                if line and not line.startswith('#'):  # Exclude comments if any
+                    instructions.append(line)
+        return instructions
 
 def main():
     assembler = MIPSAssembler()
     
     # Replace with the path to your assembly code file
-    test_instructions = parse_asm("../assets/mipsasm.asm")
+    test_instructions = assembler.parse_asm("../assets/mipsasm.asm")
 
     print("MIPS Assembly to Machine Code Conversion:")
     print("-" * 60)

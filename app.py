@@ -1,6 +1,6 @@
 import streamlit as st
 from MIPSPipeline import MIPSPipeline
-from utils.assembler import MIPSAssembler, parse_asm
+from utils.assembler import MIPSAssembler
 import tempfile
 import os
 
@@ -13,57 +13,42 @@ def main():
 
     if uploaded_file is not None:
         # Read the uploaded file
-        asm_code = uploaded_file.read().decode("utf-8")
-        
-        # Parse and assemble MIPS instructions
-        assembler = MIPSAssembler()
-        instructions = asm_code.splitlines()
-        
-        # Assemble each instruction and collect binary code
-        binary_code = []
-        st.subheader("Assembly to Binary Conversion")
-        for instruction in instructions:
-            if instruction.strip() and not instruction.strip().startswith('#'):
-                try:
-                    hex_code, binary = assembler.assemble(instruction)
-                    binary_code.append(binary)
-                    st.write(f"{instruction:<25} -> {hex_code:<12} {binary}")
-                except ValueError as e:
-                    st.write(f"Error in instruction '{instruction}': {e}")
-        
-        # Combine binary code into one string (if needed for the pipeline)
-        binary_code_str = "\n".join(binary_code)
-        
-        # Save binary code temporarily
-        with tempfile.NamedTemporaryFile(delete=False, mode='w') as tmp_file:
-            tmp_file.write(binary_code_str)
+        with tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.asm') as tmp_file:
+            tmp_file.write(uploaded_file.getvalue().decode("utf-8"))
             file_path = tmp_file.name
 
-        # Initialize and run MIPS pipeline
-        pipeline = MIPSPipeline(file_path)
+        # Parse and assemble MIPS instructions using the temporary file path
+        assembler = MIPSAssembler()
+        test_instructions = assembler.parse_asm(file_path)
 
-        if st.button("Run Simulation"):
-            st.write("Running pipeline simulation...")
+        # Assemble instructions to machine code
+        machine_codes, labels = assembler.assemble(test_instructions)
+
+        st.write("MIPS Assembly to Machine Code Conversion:")
+        st.write("-" * 60)
+        for machine_code in machine_codes:
+            st.write(machine_code)
+        st.write("-" * 60)
+
+        # Save binary code temporarily
+        with tempfile.NamedTemporaryFile(delete=False, mode='w') as tmp_file:
+            tmp_file.write("\n".join(machine_codes))  # Writing the machine code to the file
+            binary_file_path = tmp_file.name
+
+        # Button to run the pipeline
+        run_pipeline = st.button("Run Pipeline")
+
+        if run_pipeline:
+            # Initialize the MIPS pipeline using the binary file path
+            pipeline = MIPSPipeline(binary_file_path)
             
-            # Run the pipeline
-            pipeline.run_pipeline()
+            st.subheader("MIPS Pipeline Execution (Cycle-by-Cycle):")
             
-            # Display initial and final state of registers
-            st.subheader("Initial Register State")
-            st.write(pipeline.registers.reg)
-            
-            st.subheader("Final Register State")
-            st.write(pipeline.registers.reg)
-            
-            # Display register states after each instruction
-            st.subheader("Register States After Each Instruction")
-            for i, state in enumerate(pipeline.register_states):
-                st.write(f"**Instruction {i+1}**")
-                st.write(state)
-                st.write("---")  # Divider for clarity
-            
-        # Clean up temporary file after use
+            pass
+        
+        # Clean up the temporary file
         os.remove(file_path)
-
+        os.remove(binary_file_path)
+        
 if __name__ == "__main__":
     main()
