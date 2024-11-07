@@ -1,6 +1,6 @@
 import multiprocessing
 from components.registers import Registers
-from components.alu import ALU
+from components.alu import ALU, signedVal
 from components.memory import Memory
 from instructions import Instruction
 from MIPS_parser import MIPSParser
@@ -19,7 +19,7 @@ class MIPSPipeline:
         self.registers = Registers(initialise=True)
         self.PC = multiprocessing.Value('i', 0)  # Shared program counter
         self.pc_lock = multiprocessing.Lock()  # Lock for updating PC
-        self.halt = False
+        self.halt = multiprocessing.Value('i', 0)
         # Use Manager to create shared dictionary for pipeline registers
         manager = multiprocessing.Manager()
         self.pipeline_registers = manager.dict({
@@ -34,11 +34,6 @@ class MIPSPipeline:
         self.hazard_manager = HazardManager(self.registers)
 
         # Synchronization events for pipeline control
-        self.fetch_done = multiprocessing.Event()
-        self.decode_done = multiprocessing.Event()
-        self.execute_done = multiprocessing.Event()
-        self.memory_done = multiprocessing.Event()
-        self.write_done = multiprocessing.Event()
 
         # Use a Manager to create a shared list for register states
         self.register_states = manager.list()
@@ -61,283 +56,277 @@ class MIPSPipeline:
     
     def fetch_stage(self):
         """Fetches instructions from memory."""
-        while True:
-            with self.pc_lock:
-                # Check if PC is within range
-                if self.PC.value < len(self.memory.data):
-                    instruction_data = ""
-                    for i in range(4):
-                        instruction_data += self.memory.load(self.PC.value + i)
-                    IR = instruction_data
-                    if self.is_halt_instruction(IR):
-                        self.pipeline_registers['IF_ID'] = None
-                        self.halt = True
-                        break  # Exit when halt instruction is reached
-                    print(IR)
-                    self.pipeline_registers['IF_ID'] = {'PC': self.PC.value , 'IR': IR}
-                    print(f"Fetch Stage: Instruction at PC {self.PC.value} fetched")
-                    self.PC.value += 4
-                else:
+        with self.pc_lock:
+            # Check if PC is within range
+            if self.PC.value < len(self.memory.data):
+                instruction_data = ""
+                for i in range(4):
+                    instruction_data += self.memory.load(self.PC.value + i)
+                IR = instruction_data
+                if self.is_halt_instruction(IR):
                     self.pipeline_registers['IF_ID'] = None
-                    break  # Exit when end of instructions is reached
-
-            self.decode_done.wait()
-            self.decode_done.clear()
+                    self.halt.value = 1
+                    return  # Exit when halt instruction is reached
+                self.pipeline_registers['IF_ID'] = {'PC': self.PC.value , 'IR': IR}
+                print(f"Fetch Stage: Instruction at PC {self.PC.value} fetched")
+                self.PC.value += 4
+            else:
+                self.pipeline_registers['IF_ID'] = None
+                return  # Exit when end of instructions is reached
     
     def decode_stage(self):
         """Decodes instructions and passes them to the execute stage."""
-        while True:
-            if self.pipeline_registers['IF_ID'] is not None:
-                fetched_data = self.pipeline_registers['IF_ID']
-                self.decode_done.set()
+        if self.pipeline_registers['IF_ID'] is not None:
+            fetched_data = self.pipeline_registers['IF_ID']
 
-                # Check for end signal
-                if fetched_data is None:  # If None is received, break the loop
-                    self.pipeline_registers['ID_EX'] = None
-                    break
-
-                IR = fetched_data['IR']
-                opcode = int(IR[:6], 2)
-    
-                # Create the instruction object based on opcode
-                if opcode == 0:
-                    inst_type = 0  # R-type
-                elif opcode in [2, 3]:
-                    inst_type = 2  # J-type
-                else:
-                    inst_type = 1  # I-type
-                
-                inst = Instruction(type=inst_type, instruction=IR)
-                fields = inst.get_fields()
-                
-                try:
-                    rs_value = self.registers.read(int(fields['rs'], 2))
-                except ValueError:
-                    rs_value = 0
-            
-                # Prepare the data to send to the ID_EX stage
-                id_ex_data = {
-                    'instruction': inst,
-                    'PC': fetched_data['PC'],
-                    'RS': rs_value,
-                }
-
-                # Handle I-type immediate value and sign extension
-                if inst.type == 1:  # I-type instruction
-                    immediate = int(IR[16:], 2)  # Immediate is bits 16-31
-                    if (immediate & 0x8000):  # Sign extend if negative
-                        immediate |= 0xFFFF0000
-                    id_ex_data['Immediate'] = immediate
-                
-                # Handle J-type instruction
-                if inst.type == 2:  # J-type instruction
-                    id_ex_data['Address'] = int(IR[6:], 2)  # Convert address to decimal
-
-                # Create a dictionary with the mapped values
-                decoded_values = {
-                    'Instruction': id_ex_data['instruction'],
-                    'PC': id_ex_data['PC'],
-                    'RS': id_ex_data['RS'],
-                }
-
-                # Include RT only for R-type and J-type instructions
-                if inst.type == 0 or inst.type == 2:  # R-type or J-type
-                    id_ex_data['RT'] = self.registers.read(int(fields['rt'], 2))  # Read RT register
-                    decoded_values['RT'] = id_ex_data['RT']
-                
-                # Add Immediate or Address if they exist
-                if 'Immediate' in id_ex_data:
-                    decoded_values['Immediate'] = id_ex_data['Immediate']
-                if 'Address' in id_ex_data:
-                    decoded_values['Address'] = id_ex_data['Address']
-
-                # Send the decoded values to the ID_EX register
-                self.pipeline_registers['ID_EX'] = decoded_values
-                print(f"Decode Stage: Instruction decoded with PC {fetched_data['PC']}")
-                #self.pipeline_registers['IF_ID'] = None
-                self.execute_done.wait()
-                self.execute_done.clear()
-            else:
+            # Check for end signal
+            if fetched_data is None:  # If None is received, break the loop
                 self.pipeline_registers['ID_EX'] = None
-            if self.halt:
-                break
+                return
+
+            IR = fetched_data['IR']
+            opcode = int(IR[:6], 2)
+
+            # Create the instruction object based on opcode
+            if opcode == 0:
+                inst_type = 0  # R-type
+            elif opcode in [2, 3]:
+                inst_type = 2  # J-type
+            else:
+                inst_type = 1  # I-type
+            
+            inst = Instruction(type=inst_type, instruction=IR)
+            fields = inst.get_fields()
+            
+            try:
+                rs_value = self.registers.read(int(fields['rs'], 2))
+            except ValueError:
+                rs_value = 0
+        
+            # Prepare the data to send to the ID_EX stage
+            id_ex_data = {
+                'instruction': inst,
+                'PC': fetched_data['PC'],
+                'RS': rs_value,
+            }
+
+            # Handle I-type immediate value and sign extension
+            if inst.type == 1:  # I-type instruction
+                immediate = int(IR[16:], 2)  # Immediate is bits 16-31
+                if (immediate & 0x8000):  # Sign extend if negative
+                    immediate |= 0xFFFF0000
+                id_ex_data['Immediate'] = immediate
+            
+            # Handle J-type instruction
+            if inst.type == 2:  # J-type instruction
+                id_ex_data['Address'] = int(IR[6:], 2)  # Convert address to decimal
+
+            # Create a dictionary with the mapped values
+            decoded_values = {
+                'Instruction': id_ex_data['instruction'],
+                'PC': id_ex_data['PC'],
+                'RS': id_ex_data['RS'],
+            }
+
+            # Include RT only for R-type and J-type instructions
+            if inst.type == 0 or inst.type == 2:  # R-type or J-type
+                id_ex_data['RT'] = self.registers.read(int(fields['rt'], 2))  # Read RT register
+                decoded_values['RT'] = id_ex_data['RT']
+            
+            # Add Immediate or Address if they exist
+            if 'Immediate' in id_ex_data:
+                decoded_values['Immediate'] = id_ex_data['Immediate']
+            if 'Address' in id_ex_data:
+                decoded_values['Address'] = id_ex_data['Address']
+
+            # Send the decoded values to the ID_EX register
+            self.pipeline_registers['ID_EX'] = decoded_values
+            print(f"Decode Stage: Instruction decoded with PC {fetched_data['PC']}")
+            #self.pipeline_registers['IF_ID'] = None
+        else:
+            self.pipeline_registers['ID_EX'] = None
     
     def execute_stage(self):
         """Executes instructions and updates the EX/MEM pipeline register."""
-        while True:
-            if self.pipeline_registers['ID_EX'] is not None:
-                decoded_data = self.pipeline_registers['ID_EX']
-                self.execute_done.set()
+        if self.pipeline_registers['ID_EX'] is not None:
+            decoded_data = self.pipeline_registers['ID_EX']
 
-                # Check for end signal
-                if decoded_data is None:  # If None is received, break the loop
-                    self.pipeline_registers['EX_MEM'] = None
-                    break
-
-                # Retrieve the instruction and type
-                inst = decoded_data['Instruction']
-                type = inst.type  # Save the type of instruction
-                inst = inst.get_fields()  # Get the instruction fields as a dictionary
-
-                result = {'instruction': decoded_data['Instruction']}
-
-                # Check for forwarding needs
-                ex_mem_data = self.pipeline_registers['EX_MEM']
-                mem_wb_data = self.pipeline_registers['MEM_WB']
-
-                rs = int(inst['rs'], 2)
-                rt = int(inst['rt'], 2)
-                forward_a, forward_b = self.hazard_manager.check_data_hazard(rs, rt, ex_mem_data, mem_wb_data)
-                
-                # Get forwarded values if needed
-                src1 = self.hazard_manager.get_forwarded_value(rs, forward_a, ex_mem_data, mem_wb_data)
-                src2 = self.hazard_manager.get_forwarded_value(rt, forward_b, ex_mem_data, mem_wb_data)
-
-                # Simulated ALU operations based on instruction type
-                if type == 0:  # R-type
-                    if inst['funct'] == '001000':  # jr
-                        with self.pc_lock:
-                            self.PC.value = src1
-                    elif inst['funct'][:3] == "000":  # Shift operations
-                        result['ALU_result'] = self.alu.alu_shift(inst['funct'], src1, int(inst['shamt'], 2))
-                    else:  # Arithmetic/logical operations
-                        result['ALU_result'] = self.alu.alu_arith(inst['funct'], src1, src2)
-                        result['RD'] = int(inst['rd'], 2)
-                
-                elif type == 1:  # I-type
-                    imm = decoded_data.get('Immediate', 0)
-
-                    if inst['op'][:3] == "100":  # Load
-                        result['ALU_result'] = self.alu.giveAddr(src1, imm)
-                        result['RD'] = int(inst['rt'], 2)
-                    elif inst['op'][:3] == "101":  # Store
-                        result['ALU_result'] = self.alu.giveAddr(src1, imm)
-                        result['RT'] = decoded_data.get('RT', 0)  # Default to 0 if not present
-                    else:  # Arithmetic/logical operations
-                        result['ALU_result'] = self.alu.alu_arith_i(inst['op'][3:6], src1, imm)
-                        result['RD'] = int(inst['rt'], 2)
-
-                elif type == 2:  # J-type
-                    addr = int(inst['address'], 2)
-                    if inst['op'][3:] == '000010':  # j (jump)
-                        with self.pc_lock:
-                            self.PC.value = (self.PC.value & 0xF0000000) | (addr << 2)
-                    elif inst['op'][3:] == '000011':  # jal (jump and link)
-                        self.registers.write(31, self.PC.value + 4)
-                        with self.pc_lock:
-                            self.PC.value = (self.PC.value & 0xF0000000) | (addr << 2)
-                
-                # Put the result in the EX_MEM register
-                self.pipeline_registers['EX_MEM'] = result
-                print(f"Execute Stage: Executed instruction with result {result}")
-                #self.pipeline_registers['ID_EX'] = None
-                self.memory_done.wait()
-                self.memory_done.clear()
-            else:
+            # Check for end signal
+            if decoded_data is None:  # If None is received, break the loop
                 self.pipeline_registers['EX_MEM'] = None
-            if self.halt:
-                break
+                return
+
+            # Retrieve the instruction and type
+            inst = decoded_data['Instruction']
+            type = inst.type  # Save the type of instruction
+            inst = inst.get_fields()  # Get the instruction fields as a dictionary
+
+            result = {'instruction': decoded_data['Instruction']}
+
+            # Check for forwarding needs
+            ex_mem_data = self.pipeline_registers['EX_MEM']
+            mem_wb_data = self.pipeline_registers['MEM_WB']
+
+            rs = int(inst['rs'], 2)
+            rt = int(inst['rt'], 2)
+            forward_a, forward_b = self.hazard_manager.check_data_hazard(rs, rt, ex_mem_data, mem_wb_data)
+            
+            # Get forwarded values if needed
+            src1 = self.hazard_manager.get_forwarded_value(rs, forward_a, ex_mem_data, mem_wb_data)
+            src2 = self.hazard_manager.get_forwarded_value(rt, forward_b, ex_mem_data, mem_wb_data)
+
+            # Simulated ALU operations based on instruction type
+            if type == 0:  # R-type
+                if inst['funct'] == '001000':  # jr
+                    with self.pc_lock:
+                        self.PC.value = src1
+                elif inst['funct'][:3] == "000":  # Shift operations
+                    result['ALU_result'] = self.alu.alu_shift(inst['funct'], src1, int(inst['shamt'], 2))
+                else:  # Arithmetic/logical operations
+                    result['ALU_result'] = self.alu.alu_arith(inst['funct'], src1, src2)
+                    result['RD'] = int(inst['rd'], 2)
+            
+            elif type == 1:  # I-type
+                imm = decoded_data.get('Immediate', 0)
+
+                if inst['op'][:3] == "100":  # Load
+                    result['ALU_result'] = self.alu.giveAddr(src1, imm)
+                    result['RD'] = int(inst['rt'], 2)
+                elif inst['op'][:3] == "101":  # Store
+                    result['ALU_result'] = self.alu.giveAddr(src1, imm)
+                    result['RT'] = decoded_data.get('RT', 0)  # Default to 0 if not present
+                else:  # Arithmetic/logical operations
+                    result['ALU_result'] = self.alu.alu_arith_i(inst['op'][3:6], src1, imm)
+                    result['RD'] = int(inst['rt'], 2)
+
+            elif type == 2:  # J-type
+                addr = int(inst['address'], 2)
+                if inst['op'][3:] == '000010':  # j (jump)
+                    with self.pc_lock:
+                        self.PC.value = (self.PC.value & 0xF0000000) | (addr << 2)
+                elif inst['op'][3:] == '000011':  # jal (jump and link)
+                    self.registers.write(31, self.PC.value + 4)
+                    with self.pc_lock:
+                        self.PC.value = (self.PC.value & 0xF0000000) | (addr << 2)
+            
+            # Put the result in the EX_MEM register
+            self.pipeline_registers['EX_MEM'] = result
+            print(f"Execute Stage: Executed instruction with result {result}")
+            #self.pipeline_registers['ID_EX'] = None
+        else:
+            self.pipeline_registers['EX_MEM'] = None
 
     def memory_access_stage(self):
         """Handles memory operations and passes results to write-back stage."""
-        while True:
-            if self.pipeline_registers['EX_MEM'] is not None:
-                execute_data = self.pipeline_registers['EX_MEM']
-                self.memory_done.set()
-                
-                if execute_data is None:  # End signal
-                    self.pipeline_registers['MEM_WB'] = None
-                    break
-                
-                inst = execute_data['instruction']
-                type = inst.type  # Save the type of instruction
-                inst = inst.get_fields()
-
-                memory_data = {'instruction': execute_data['instruction']}
-
-                if type == 1 and inst['op'][:3] == "100":  # Load instruction
-                    address = inst['ALU_result']
-                    mem_data = "".join(self.memory.load_byte(address + i) for i in range(4))  # Load 4 bytes
-                    memory_data['Mem_data'] = mem_data
-                    memory_data['RD'] = inst['RD']
-                
-                elif type == 1 and inst['op'][:3] == "101":  # Store instruction
-                    address = inst['ALU_result']
-                    store_data = inst['RT']
-                    for i in range(4):
-                        self.memory.store(address + i, store_data[i*8:(i+1)*8])  # Store each byte individually
-
-                else:  # No memory access, pass ALU result
-                    memory_data['ALU_result'] = execute_data['ALU_result']
-                    memory_data['RD'] = execute_data['RD']
-
-                self.pipeline_registers['MEM_WB'] = memory_data
-                print(f"Memory Access Stage: Instruction memory access with data {memory_data}")
-                #self.pipeline_registers['EX_MEM'] = None
-                self.write_done.wait()
-                self.write_done.clear()
-            else:
+        if self.pipeline_registers['EX_MEM'] is not None:
+            execute_data = self.pipeline_registers['EX_MEM']
+            
+            if execute_data is None:  # End signal
                 self.pipeline_registers['MEM_WB'] = None
-            if self.halt:
-                break
+                return
+            
+            inst = execute_data['instruction']
+            type = inst.type  # Save the type of instruction
+            inst = inst.get_fields()
+
+            memory_data = {'instruction': execute_data['instruction']}
+
+            if type == 1 and inst['op'][:3] == "100":  # Load instruction
+                address = inst['ALU_result']
+                mem_data = "".join(self.memory.load_byte(address + i) for i in range(4))  # Load 4 bytes
+                memory_data['Mem_data'] = mem_data
+                memory_data['RD'] = inst['RD']
+            
+            elif type == 1 and inst['op'][:3] == "101":  # Store instruction
+                address = inst['ALU_result']
+                store_data = inst['RT']
+                for i in range(4):
+                    self.memory.store(address + i, store_data[i*8:(i+1)*8])  # Store each byte individually
+
+            else:  # No memory access, pass ALU result
+                memory_data['ALU_result'] = execute_data['ALU_result']
+                memory_data['RD'] = execute_data['RD']
+
+            self.pipeline_registers['MEM_WB'] = memory_data
+            print(f"Memory Access Stage: Instruction memory access with data {memory_data}")
+            #self.pipeline_registers['EX_MEM'] = None
+        else:
+            self.pipeline_registers['MEM_WB'] = None
 
     def write_back_stage(self):
         """Writes data back to registers if necessary."""
-        while True:
-            if self.pipeline_registers['MEM_WB'] is not None:
-                memory_data = self.pipeline_registers['MEM_WB']
-                self.write_done.set()
+        if self.pipeline_registers['MEM_WB'] is not None:
+            memory_data = self.pipeline_registers['MEM_WB']
 
-                inst = memory_data['instruction']
-                type = inst.type  # Save the type of instruction
-                inst = inst.get_fields()
-                reg_dst = memory_data['RD']
-                
-                # Perform the write-back operation
-                if type == 1 and inst['op'][:3] == "100":  # Load instruction
-                    self.registers.write(reg_dst, memory_data['Mem_data'])
-                elif type in [0, 1]:  # R-type or I-type ALU instruction
-                    self.registers.write(reg_dst, memory_data['ALU_result'])
+            inst = memory_data['instruction']
+            type = inst.type  # Save the type of instruction
+            inst = inst.get_fields()
+            reg_dst = memory_data['RD']
+            
+            # Perform the write-back operation
+            if type == 1 and inst['op'][:3] == "100":  # Load instruction
+                self.registers.write(reg_dst, memory_data['Mem_data'])
+            elif type in [0, 1]:  # R-type or I-type ALU instruction
+                self.registers.write(reg_dst, memory_data['ALU_result'])
 
-                # Store the register state
-                self.register_states.append(self.registers.reg.copy())
-                print(f"Write-Back Stage: Write back completed for instruction {memory_data}")
-                #self.pipeline_registers['MEM_WB'] = None
-            if self.halt:
-                break
+            # Store the register state
+            self.register_states.append(self.registers.reg.copy())
+            print(f"Write-Back Stage: Write back completed for instruction {memory_data}")
+            #self.pipeline_registers['MEM_WB'] = None
+
+    def empty_pipeline(self, halt, pipregs):
+        if halt.value==0:
+            return False
+        for val in pipregs.values():
+            if val is not None:
+                return False
+        return True
 
     def run_pipeline(self):
         """Starts and manages pipeline stages as parallel processes."""
         # Initialize processes for each stage
-        fetch_process = multiprocessing.Process(target=self.fetch_stage)
-        decode_process = multiprocessing.Process(target=self.decode_stage)
-        execute_process = multiprocessing.Process(target=self.execute_stage)
-        mem_access_process = multiprocessing.Process(target=self.memory_access_stage)
-        write_back_process = multiprocessing.Process(target=self.write_back_stage)
+        
         
         # Start all processes
-        fetch_process.start()
-        decode_process.start()
-        execute_process.start()
-        mem_access_process.start()
-        write_back_process.start()
         
+        cycle = 1
+        while not self.empty_pipeline(self.halt, self.pipeline_registers):
+            print("Cycle ", cycle)
+            
+            fetch_process = multiprocessing.Process(target=self.fetch_stage)
+            decode_process = multiprocessing.Process(target=self.decode_stage)
+            execute_process = multiprocessing.Process(target=self.execute_stage)
+            mem_access_process = multiprocessing.Process(target=self.memory_access_stage)
+            write_back_process = multiprocessing.Process(target=self.write_back_stage)
+
+            write_back_process.start()
+            mem_access_process.start()
+            execute_process.start()
+            decode_process.start()
+            fetch_process.start()
+
+            fetch_process.join()
+            decode_process.join()
+            execute_process.join()
+            mem_access_process.join()
+            write_back_process.join() 
+
+            cycle += 1
+
         # Wait for all processes to complete
-        fetch_process.join()
-        decode_process.join()
-        execute_process.join()
-        mem_access_process.join()
-        write_back_process.join()    
+           
 
         # Display the final state of registers
         print("Final Register States:")
-        print(self.registers.reg)
-        
         # Display the tracked register states after each instruction
         print("Tracked Register States After Each Instruction:")
+        allRegNames = ["$0", "$at", "$v0", "$v1", "$a0", "$a1", "$a2", "$a3", "$t0", "$t1", "$t2", "$t3", "$t4", "$t5", "$t6", "$t7", "$s0", "$s1", "$s2", "$s3", "$s4", "$s5", "$s6", "$s7", "$t8", "$t9", "$k0", "$k1", "$gp", "$sp", "$fp", "$ra"]
         for i, state in enumerate(self.register_states):
-            print(f"Instruction {i+1}: {state}")
-            print()
+            allRegValues = [signedVal(val) for val in state]
+            print(f"Instruction {i+1}:")
+            for j in range(32):
+                print(f"{allRegNames[j]}: {allRegValues[j]}")
+            print() 
 
 if __name__ == "__main__":
     mips_pipeline = MIPSPipeline(file_path="assets/binary.txt")
