@@ -28,17 +28,17 @@ class HazardManager:
         forward_b = 0  # For rt
         
         # EX/MEM hazard
-        if ex_mem_data and 'RegDst' in ex_mem_data:
-            if rs == ex_mem_data['RegDst'] and rs != 0:
+        if ex_mem_data and 'RD' in ex_mem_data:
+            if rs == ex_mem_data['RD'] and rs != 0:
                 forward_a = 1
-            if rt == ex_mem_data['RegDst'] and rt != 0:
+            if rt == ex_mem_data['RD'] and rt != 0:
                 forward_b = 1
                 
         # MEM/WB hazard
-        elif mem_wb_data and 'RegDst' in mem_wb_data:
-            if rs == mem_wb_data['RegDst'] and rs != 0:
+        elif mem_wb_data and 'RD' in mem_wb_data:
+            if rs == mem_wb_data['RD'] and rs != 0:
                 forward_a = 2
-            if rt == mem_wb_data['RegDst'] and rt != 0:
+            if rt == mem_wb_data['RD'] and rt != 0:
                 forward_b = 2
                 
         return forward_a, forward_b
