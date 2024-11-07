@@ -74,11 +74,9 @@ class MIPSPipeline:
                 self.pipeline_registers['IF_ID'] = None
                 return  # Exit when end of instructions is reached
     
-    def decode_stage(self):
+    def decode_stage(self, fetched_data):
         """Decodes instructions and passes them to the execute stage."""
-        if self.pipeline_registers['IF_ID'] is not None:
-            fetched_data = self.pipeline_registers['IF_ID']
-
+        if fetched_data is not None:
             # Check for end signal
             if fetched_data is None:  # If None is received, break the loop
                 self.pipeline_registers['ID_EX'] = None
@@ -146,10 +144,10 @@ class MIPSPipeline:
         else:
             self.pipeline_registers['ID_EX'] = None
     
-    def execute_stage(self):
+    def execute_stage(self, decoded_data):
         """Executes instructions and updates the EX/MEM pipeline register."""
-        if self.pipeline_registers['ID_EX'] is not None:
-            decoded_data = self.pipeline_registers['ID_EX']
+        if decoded_data is not None:
+            
 
             # Check for end signal
             if decoded_data is None:  # If None is received, break the loop
@@ -216,10 +214,9 @@ class MIPSPipeline:
         else:
             self.pipeline_registers['EX_MEM'] = None
 
-    def memory_access_stage(self):
+    def memory_access_stage(self, execute_data):
         """Handles memory operations and passes results to write-back stage."""
-        if self.pipeline_registers['EX_MEM'] is not None:
-            execute_data = self.pipeline_registers['EX_MEM']
+        if execute_data is not None:
             
             if execute_data is None:  # End signal
                 self.pipeline_registers['MEM_WB'] = None
@@ -253,10 +250,9 @@ class MIPSPipeline:
         else:
             self.pipeline_registers['MEM_WB'] = None
 
-    def write_back_stage(self):
+    def write_back_stage(self, memory_data):
         """Writes data back to registers if necessary."""
-        if self.pipeline_registers['MEM_WB'] is not None:
-            memory_data = self.pipeline_registers['MEM_WB']
+        if memory_data is not None:
 
             inst = memory_data['instruction']
             type = inst.type  # Save the type of instruction
@@ -292,12 +288,16 @@ class MIPSPipeline:
         cycle = 1
         while not self.empty_pipeline(self.halt, self.pipeline_registers):
             print("Cycle ", cycle)
-            
+            fetched_data = self.pipeline_registers["IF_ID"]
+            decoded_data = self.pipeline_registers["ID_EX"] 
+            execute_data = self.pipeline_registers["EX_MEM"]
+            memory_data = self.pipeline_registers["MEM_WB"]
+
             fetch_process = multiprocessing.Process(target=self.fetch_stage)
-            decode_process = multiprocessing.Process(target=self.decode_stage)
-            execute_process = multiprocessing.Process(target=self.execute_stage)
-            mem_access_process = multiprocessing.Process(target=self.memory_access_stage)
-            write_back_process = multiprocessing.Process(target=self.write_back_stage)
+            decode_process = multiprocessing.Process(target=self.decode_stage(fetched_data))
+            execute_process = multiprocessing.Process(target=self.execute_stage(decoded_data))
+            mem_access_process = multiprocessing.Process(target=self.memory_access_stage(execute_data))
+            write_back_process = multiprocessing.Process(target=self.write_back_stage(memory_data))
 
             write_back_process.start()
             mem_access_process.start()
