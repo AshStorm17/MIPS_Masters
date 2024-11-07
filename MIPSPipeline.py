@@ -11,18 +11,23 @@ class MIPSPipeline:
         # Initialize components
         self.memory = Memory()
         mips_parser = MIPSParser()
-        self.memory.data = mips_parser.parse_mips_file(file_path)
-        
+        instructions_parsed = mips_parser.parse_mips_file(file_path)
+        for insts in instructions_parsed:
+            for i in range(4):
+                self.memory.store(insts["PC"] + i, insts["IR"][i*8:(i+1)*8])
         self.alu = ALU()
         self.registers = Registers(initialise=True)
         self.PC = multiprocessing.Value('i', 0)  # Shared program counter
         self.pc_lock = multiprocessing.Lock()  # Lock for updating PC
-        
-        # Intermediate pipeline queues (for communication between stages)
-        self.IF_ID = multiprocessing.Queue()
-        self.ID_EX = multiprocessing.Queue()
-        self.EX_MEM = multiprocessing.Queue()
-        self.MEM_WB = multiprocessing.Queue()
+        self.halt = False
+        # Use Manager to create shared dictionary for pipeline registers
+        manager = multiprocessing.Manager()
+        self.pipeline_registers = manager.dict({
+            'IF_ID': None,
+            'ID_EX': None,
+            'EX_MEM': None,
+            'MEM_WB': None,
+        })
         
         # Register and memory locks
         self.register_lock = multiprocessing.Lock()
@@ -36,7 +41,6 @@ class MIPSPipeline:
         self.write_done = multiprocessing.Event()
 
         # Use a Manager to create a shared list for register states
-        manager = multiprocessing.Manager()
         self.register_states = manager.list()
 
     def is_halt_instruction(self, IR):
@@ -60,18 +64,21 @@ class MIPSPipeline:
         while True:
             with self.pc_lock:
                 # Check if PC is within range
-                if self.PC.value // 4 < len(self.memory.data):
-                    instruction_data = self.memory.data[self.PC.value // 4]
-                    IR = instruction_data["IR"]
+                if self.PC.value < len(self.memory.data):
+                    instruction_data = ""
+                    for i in range(4):
+                        instruction_data += self.memory.load(self.PC.value + i)
+                    IR = instruction_data
                     if self.is_halt_instruction(IR):
-                        self.IF_ID.put(None)
+                        self.pipeline_registers['IF_ID'] = None
+                        self.halt = True
                         break  # Exit when halt instruction is reached
-                    PC = instruction_data["PC"]
-                    self.IF_ID.put({'PC': PC, 'IR': IR})
-                    print(f"Fetch Stage: Instruction at PC {PC} fetched")
+                    print(IR)
+                    self.pipeline_registers['IF_ID'] = {'PC': self.PC.value , 'IR': IR}
+                    print(f"Fetch Stage: Instruction at PC {self.PC.value} fetched")
                     self.PC.value += 4
                 else:
-                    self.IF_ID.put(None)
+                    self.pipeline_registers['IF_ID'] = None
                     break  # Exit when end of instructions is reached
 
             self.decode_done.wait()
@@ -80,13 +87,13 @@ class MIPSPipeline:
     def decode_stage(self):
         """Decodes instructions and passes them to the execute stage."""
         while True:
-            if not self.IF_ID.empty():
-                fetched_data = self.IF_ID.get()
+            if self.pipeline_registers['IF_ID'] is not None:
+                fetched_data = self.pipeline_registers['IF_ID']
                 self.decode_done.set()
 
                 # Check for end signal
                 if fetched_data is None:  # If None is received, break the loop
-                    self.ID_EX.put(None)
+                    self.pipeline_registers['ID_EX'] = None
                     break
 
                 IR = fetched_data['IR']
@@ -144,22 +151,27 @@ class MIPSPipeline:
                 if 'Address' in id_ex_data:
                     decoded_values['Address'] = id_ex_data['Address']
 
-                # Send the decoded values to the ID_EX queue
-                self.ID_EX.put(decoded_values)
+                # Send the decoded values to the ID_EX register
+                self.pipeline_registers['ID_EX'] = decoded_values
                 print(f"Decode Stage: Instruction decoded with PC {fetched_data['PC']}")
+                #self.pipeline_registers['IF_ID'] = None
                 self.execute_done.wait()
                 self.execute_done.clear()
+            else:
+                self.pipeline_registers['ID_EX'] = None
+            if self.halt:
+                break
     
     def execute_stage(self):
         """Executes instructions and updates the EX/MEM pipeline register."""
         while True:
-            if not self.ID_EX.empty():
-                decoded_data = self.ID_EX.get()
+            if self.pipeline_registers['ID_EX'] is not None:
+                decoded_data = self.pipeline_registers['ID_EX']
                 self.execute_done.set()
 
                 # Check for end signal
                 if decoded_data is None:  # If None is received, break the loop
-                    self.EX_MEM.put(None)
+                    self.pipeline_registers['EX_MEM'] = None
                     break
 
                 # Retrieve the instruction and type
@@ -170,12 +182,9 @@ class MIPSPipeline:
                 result = {'instruction': decoded_data['Instruction']}
 
                 # Check for forwarding needs
-                ex_mem_data = None
-                mem_wb_data = None
-                if not self.EX_MEM.empty():
-                    ex_mem_data = self.EX_MEM.get()
-                if not self.MEM_WB.empty():
-                    mem_wb_data = self.MEM_WB.get()
+                ex_mem_data = self.pipeline_registers['EX_MEM']
+                mem_wb_data = self.pipeline_registers['MEM_WB']
+
                 rs = int(inst['rs'], 2)
                 rt = int(inst['rt'], 2)
                 forward_a, forward_b = self.hazard_manager.check_data_hazard(rs, rt, ex_mem_data, mem_wb_data)
@@ -183,9 +192,9 @@ class MIPSPipeline:
                 # Get forwarded values if needed
                 src1 = self.hazard_manager.get_forwarded_value(rs, forward_a, ex_mem_data, mem_wb_data)
                 src2 = self.hazard_manager.get_forwarded_value(rt, forward_b, ex_mem_data, mem_wb_data)
+
                 # Simulated ALU operations based on instruction type
                 if type == 0:  # R-type
-                    # ALU operations based on funct
                     if inst['funct'] == '001000':  # jr
                         with self.pc_lock:
                             self.PC.value = src1
@@ -210,29 +219,34 @@ class MIPSPipeline:
 
                 elif type == 2:  # J-type
                     addr = int(inst['address'], 2)
-                    if inst['op'][3:] == '000010':  # j
+                    if inst['op'][3:] == '000010':  # j (jump)
                         with self.pc_lock:
                             self.PC.value = (self.PC.value & 0xF0000000) | (addr << 2)
-                    elif inst['op'][3:] == '000011':  # jal
+                    elif inst['op'][3:] == '000011':  # jal (jump and link)
                         self.registers.write(31, self.PC.value + 4)
                         with self.pc_lock:
                             self.PC.value = (self.PC.value & 0xF0000000) | (addr << 2)
                 
-                # Put the result in the EX_MEM queue
+                # Put the result in the EX_MEM register
+                self.pipeline_registers['EX_MEM'] = result
                 print(f"Execute Stage: Executed instruction with result {result}")
-                self.EX_MEM.put(result)
+                #self.pipeline_registers['ID_EX'] = None
                 self.memory_done.wait()
                 self.memory_done.clear()
-    
+            else:
+                self.pipeline_registers['EX_MEM'] = None
+            if self.halt:
+                break
+
     def memory_access_stage(self):
         """Handles memory operations and passes results to write-back stage."""
         while True:
-            if not self.EX_MEM.empty():
-                execute_data = self.EX_MEM.get()
+            if self.pipeline_registers['EX_MEM'] is not None:
+                execute_data = self.pipeline_registers['EX_MEM']
                 self.memory_done.set()
                 
                 if execute_data is None:  # End signal
-                    self.MEM_WB.put(None)
+                    self.pipeline_registers['MEM_WB'] = None
                     break
                 
                 inst = execute_data['instruction']
@@ -251,27 +265,28 @@ class MIPSPipeline:
                     address = inst['ALU_result']
                     store_data = inst['RT']
                     for i in range(4):
-                        self.memory.store(store_data[i*8:(i+1)*8], address + i)  # Store each byte individually
+                        self.memory.store(address + i, store_data[i*8:(i+1)*8])  # Store each byte individually
 
                 else:  # No memory access, pass ALU result
                     memory_data['ALU_result'] = execute_data['ALU_result']
                     memory_data['RD'] = execute_data['RD']
 
-                self.MEM_WB.put(memory_data)
+                self.pipeline_registers['MEM_WB'] = memory_data
                 print(f"Memory Access Stage: Instruction memory access with data {memory_data}")
+                #self.pipeline_registers['EX_MEM'] = None
                 self.write_done.wait()
                 self.write_done.clear()
-    
+            else:
+                self.pipeline_registers['MEM_WB'] = None
+            if self.halt:
+                break
+
     def write_back_stage(self):
         """Writes data back to registers if necessary."""
         while True:
-            # Retrieve data from MEM_WB queue
-            if not self.MEM_WB.empty():
-                memory_data = self.MEM_WB.get()
+            if self.pipeline_registers['MEM_WB'] is not None:
+                memory_data = self.pipeline_registers['MEM_WB']
                 self.write_done.set()
-
-                if memory_data is None:  # End signal
-                    break
 
                 inst = memory_data['instruction']
                 type = inst.type  # Save the type of instruction
@@ -284,13 +299,15 @@ class MIPSPipeline:
                 elif type in [0, 1]:  # R-type or I-type ALU instruction
                     self.registers.write(reg_dst, memory_data['ALU_result'])
 
+                # Store the register state
                 self.register_states.append(self.registers.reg.copy())
                 print(f"Write-Back Stage: Write back completed for instruction {memory_data}")
-    
+                #self.pipeline_registers['MEM_WB'] = None
+            if self.halt:
+                break
+
     def run_pipeline(self):
         """Starts and manages pipeline stages as parallel processes."""
-        #check the state of registers
-        print(self.registers.reg)
         # Initialize processes for each stage
         fetch_process = multiprocessing.Process(target=self.fetch_stage)
         decode_process = multiprocessing.Process(target=self.decode_stage)
@@ -312,16 +329,16 @@ class MIPSPipeline:
         mem_access_process.join()
         write_back_process.join()    
 
-        #check the final state of registers
+        # Display the final state of registers
+        print("Final Register States:")
         print(self.registers.reg)
         
         # Display the tracked register states after each instruction
         print("Tracked Register States After Each Instruction:")
         for i, state in enumerate(self.register_states):
             print(f"Instruction {i+1}: {state}")
-            print() 
-    
-if __name__=="__main__":
+            print()
+
+if __name__ == "__main__":
     mips_pipeline = MIPSPipeline(file_path="assets/binary.txt")
     mips_pipeline.run_pipeline()
-    
