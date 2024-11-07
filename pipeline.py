@@ -3,7 +3,7 @@ from components.registers import Registers
 from components.alu import ALU, signedVal
 from components.memory import Memory
 from instructions import Instruction
-from MIPS_parser import MIPSParser
+from parser import MIPSParser
 from hazard import HazardManager
 
 class MIPSPipeline:

@@ -1,5 +1,5 @@
 import streamlit as st
-from MIPSPipeline import MIPSPipeline
+from pipeline import MIPSPipeline
 from utils.assembler import MIPSAssembler
 import tempfile
 import os

@@ -1,6 +1,6 @@
 import multiprocessing
 from components.memory import Memory
-from MIPS_parser import MIPSParser
+from parser import MIPSParser
 from components.registers import Registers
 
 class FetchTest:
