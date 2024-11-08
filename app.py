@@ -63,9 +63,15 @@ def main():
             # Create a DataFrame from the collected register states
             register_df = pd.DataFrame(register_states_per_cycle, columns=allRegNames)
 
-            # Display the register states as a table
+            # Split the DataFrame into four parts
+            split_register_df = [register_df.iloc[:, i:i+8] for i in range(0, len(allRegNames), 8)]
+
             st.write("Register States Over Cycles:")
-            st.dataframe(register_df)
+
+            # Display each part of the register table
+            for i, part in enumerate(split_register_df):
+                st.write(f"Part {i+1}")
+                st.dataframe(part)
 
             st.write("Pipeline execution completed.")
         
