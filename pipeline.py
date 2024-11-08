@@ -1,6 +1,6 @@
 import multiprocessing
 from components.registers import Registers
-from components.alu import ALU, signedVal
+from components.alu import ALU, signedVal, signedBin
 from components.memory import Memory
 from instructions import Instruction
 from parser import MIPSParser
@@ -10,6 +10,7 @@ class MIPSPipeline:
     def __init__(self, file_path):
         # Initialize components
         self.memory = Memory()
+        self.stall = False
         mips_parser = MIPSParser()
         instructions_parsed = mips_parser.parse_mips_file(file_path)
         for insts in instructions_parsed:
@@ -56,6 +57,8 @@ class MIPSPipeline:
     
     def fetch_stage(self):
         """Fetches instructions from memory."""
+        if self.halt.value == 1:
+            return
         with self.pc_lock:
             # Check if PC is within range
             if self.PC.value < len(self.memory.data):
@@ -66,6 +69,7 @@ class MIPSPipeline:
                 if self.is_halt_instruction(IR):
                     self.pipeline_registers['IF_ID'] = None
                     self.halt.value = 1
+                    self.PC.value += 4
                     return  # Exit when halt instruction is reached
                 self.pipeline_registers['IF_ID'] = {'PC': self.PC.value , 'IR': IR}
                 print(f"Fetch Stage: Instruction at PC {self.PC.value} fetched")
@@ -95,6 +99,12 @@ class MIPSPipeline:
             
             inst = Instruction(type=inst_type, instruction=IR)
             fields = inst.get_fields()
+
+            if self.pipeline_registers['ID_EX']:
+                inst_prev = self.pipeline_registers['ID_EX']['Instruction'].get_fields()
+                
+                if self.hazard_manager.check_data_hazard_stall(fields, inst_prev):
+                    self.stall = True
             
             try:
                 rs_value = self.registers.read(int(fields['rs'], 2))
@@ -127,7 +137,7 @@ class MIPSPipeline:
             }
 
             # Include RT only for R-type and J-type instructions
-            if inst.type == 0 or inst.type == 2:  # R-type or J-type
+            if not inst.type == 2:  # R-type or J-type
                 id_ex_data['RT'] = self.registers.read(int(fields['rt'], 2))  # Read RT register
                 decoded_values['RT'] = id_ex_data['RT']
             
@@ -193,6 +203,19 @@ class MIPSPipeline:
                 elif inst['op'][:3] == "101":  # Store
                     result['ALU_result'] = self.alu.giveAddr(src1, imm)
                     result['RT'] = decoded_data.get('RT', 0)  # Default to 0 if not present
+                elif inst['op'][:3] == "000":
+                    if (imm & 0x8000): #sign extend
+                        imm= imm | 0xFFFF0000
+                    a_equal= self.alu.isEqual(src1, src2)
+                    b_condition= int(inst["op"][3:],2)==4
+                    if (not (a_equal^b_condition)):
+                        self.pipeline_registers["IF_ID"] = None
+                        self.pipeline_registers["ID_EX"] = None
+                        with self.pc_lock:
+                            self.PC.value = self.PC.value + (imm<<2) - 4
+                        print(self.PC.value)
+                    result['ALU_result'] = None
+                    result['RD'] = None
                 else:  # Arithmetic/logical operations
                     result['ALU_result'] = self.alu.alu_arith_i(inst['op'][3:6], src1, imm)
                     result['RD'] = int(inst['rt'], 2)
@@ -229,17 +252,18 @@ class MIPSPipeline:
             memory_data = {'instruction': execute_data['instruction']}
 
             if type == 1 and inst['op'][:3] == "100":  # Load instruction
-                address = inst['ALU_result']
-                mem_data = "".join(self.memory.load_byte(address + i) for i in range(4))  # Load 4 bytes
-                memory_data['Mem_data'] = mem_data
-                memory_data['RD'] = inst['RD']
+                address = execute_data['ALU_result']
+                mem_data = "".join(self.memory.load(address + i) for i in range(4))  # Load 4 bytes
+                memory_data['Mem_data'] = signedVal(mem_data)
+                memory_data['RD'] = execute_data['RD']
             
             elif type == 1 and inst['op'][:3] == "101":  # Store instruction
-                address = inst['ALU_result']
-                store_data = inst['RT']
+                address = execute_data['ALU_result']
+                store_data = signedBin(execute_data['RT'])
                 for i in range(4):
                     self.memory.store(address + i, store_data[i*8:(i+1)*8])  # Store each byte individually
-
+                memory_data['RD'] = None
+            
             else:  # No memory access, pass ALU result
                 memory_data['ALU_result'] = execute_data['ALU_result']
                 memory_data['RD'] = execute_data['RD']
@@ -258,12 +282,13 @@ class MIPSPipeline:
             type = inst.type  # Save the type of instruction
             inst = inst.get_fields()
             reg_dst = memory_data['RD']
-            
-            # Perform the write-back operation
-            if type == 1 and inst['op'][:3] == "100":  # Load instruction
-                self.registers.write(reg_dst, memory_data['Mem_data'])
-            elif type in [0, 1]:  # R-type or I-type ALU instruction
-                self.registers.write(reg_dst, memory_data['ALU_result'])
+            if reg_dst: # if reg_dst is none, branch instruction, no write_back required
+                # Perform the write-back operation
+                if type == 1 and inst['op'][:3] == "100":  # Load instruction
+                    print(reg_dst, memory_data["Mem_data"])
+                    self.registers.write(reg_dst, memory_data['Mem_data'])
+                elif type in [0, 1]:  # R-type or I-type ALU instruction
+                    self.registers.write(reg_dst, memory_data['ALU_result'])
 
             # Store the register state
             self.register_states.append(self.registers.reg.copy())
@@ -283,34 +308,36 @@ class MIPSPipeline:
         cycle = 1
         while not self.empty_pipeline(self.halt, self.pipeline_registers):
             print("Cycle ", cycle)
-
+            
             # Get the data from pipeline registers
             fetched_data = self.pipeline_registers["IF_ID"]
             decoded_data = self.pipeline_registers["ID_EX"] 
             execute_data = self.pipeline_registers["EX_MEM"]
             memory_data = self.pipeline_registers["MEM_WB"]
-
             # Initialize processes for each stage
             fetch_process = multiprocessing.Process(target=self.fetch_stage)
             decode_process = multiprocessing.Process(target=self.decode_stage(fetched_data))
             execute_process = multiprocessing.Process(target=self.execute_stage(decoded_data))
             mem_access_process = multiprocessing.Process(target=self.memory_access_stage(execute_data))
             write_back_process = multiprocessing.Process(target=self.write_back_stage(memory_data))
-
+            stall = self.stall
             # Start all processes
-            write_back_process.start()
+            if not stall:
+                fetch_process.start()
+                decode_process.start()
+                execute_process.start()
             mem_access_process.start()
-            execute_process.start()
-            decode_process.start()
-            fetch_process.start()
+            write_back_process.start()
 
             # Join all processes
-            fetch_process.join()
-            decode_process.join()
-            execute_process.join()
+            if not stall:
+                fetch_process.join()
+                decode_process.join()
+                execute_process.join()
             mem_access_process.join()
             write_back_process.join() 
-
+            if stall == True:
+                self.stall = False
             cycle += 1
 
         # Display the final state of registers
@@ -330,5 +357,5 @@ class MIPSPipeline:
         return self.register_states
 
 if __name__ == "__main__":
-    mips_pipeline = MIPSPipeline(file_path="assets/binary.txt")
+    mips_pipeline = MIPSPipeline(file_path="assets/hex.txt")
     mips_pipeline.run_pipeline()

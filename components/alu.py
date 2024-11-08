@@ -51,27 +51,28 @@ class ALU:
 
     def alu_arith_i(self, operation, src, immediate):
         """Perform immediate arithmetic operations."""
+        src = signedBin(src)
+        immediate = signedBin(immediate)
         match operation:
             case "000":  # addi
-                return signedVal(src + immediate)
+                return signedVal(src) + signedVal(immediate)
             case "010":  # slti
-                return 1 if src < immediate else 0
+                return 1 if signedVal(src) < signedVal(immediate) else 0
             case "011":  # sltiu
-                return 1 if src < immediate else 0
+                return 1 if int(src, 2) < int(immediate, 2) else 0
             case "100":  # andi
-                return src & immediate
+                return signedVal(src) & signedVal(immediate)
             case "101":  # ori
-                return src | immediate
+                return signedVal(src) | signedVal(immediate)
             case "111":  # lui
-                return immediate << 16
+                return signedVal(immediate) << 16
 
     def giveAddr(self, baseAddr, lower16bits):
         """
         Compute the memory address for load/store instructions 
         by adding the base address and the sign-extended lower 16 bits.
         """
-        offset = signedVal(lower16bits)
-        return baseAddr + offset  # Return the final computed address
+        return baseAddr + lower16bits  # Return the final computed address
     
     def isEqual(self, int1, int2):
         """

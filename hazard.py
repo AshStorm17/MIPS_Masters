@@ -42,6 +42,19 @@ class HazardManager:
                 forward_b = 2
                 
         return forward_a, forward_b
+    
+    def check_data_hazard_stall(self, inst_cur, inst_prev):
+        """
+        Check for data hazards stall
+        """
+        if not inst_prev['op'][:3]=='100':
+            return False
+        if inst_prev and 'rt' in inst_prev:
+            if 'rs' in inst_cur and inst_cur['rs']==inst_prev['rt']:
+                return True
+            if 'rt' in inst_cur and inst_cur['rt']==inst_prev['rt']:
+                return True
+        return False
 
     def get_forwarded_value(self, reg_num, forward_signal, ex_mem_data, mem_wb_data):
         """Get the forwarded value based on forwarding signal"""
