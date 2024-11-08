@@ -178,7 +178,7 @@ def main():
     assembler = MIPSAssembler()
     
     # Replace with the path to your assembly code file
-    test_instructions = assembler.parse_asm("../assets/mipsasm.asm")
+    test_instructions = assembler.parse_asm("../assets/mipsasm_2.asm")
 
     print("MIPS Assembly to Machine Code Conversion:")
     print("-" * 60)
