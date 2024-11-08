@@ -280,31 +280,31 @@ class MIPSPipeline:
 
     def run_pipeline(self):
         """Starts and manages pipeline stages as parallel processes."""
-        # Initialize processes for each stage
-        
-        
-        # Start all processes
-        
         cycle = 1
         while not self.empty_pipeline(self.halt, self.pipeline_registers):
             print("Cycle ", cycle)
+
+            # Get the data from pipeline registers
             fetched_data = self.pipeline_registers["IF_ID"]
             decoded_data = self.pipeline_registers["ID_EX"] 
             execute_data = self.pipeline_registers["EX_MEM"]
             memory_data = self.pipeline_registers["MEM_WB"]
 
+            # Initialize processes for each stage
             fetch_process = multiprocessing.Process(target=self.fetch_stage)
             decode_process = multiprocessing.Process(target=self.decode_stage(fetched_data))
             execute_process = multiprocessing.Process(target=self.execute_stage(decoded_data))
             mem_access_process = multiprocessing.Process(target=self.memory_access_stage(execute_data))
             write_back_process = multiprocessing.Process(target=self.write_back_stage(memory_data))
 
+            # Start all processes
             write_back_process.start()
             mem_access_process.start()
             execute_process.start()
             decode_process.start()
             fetch_process.start()
 
+            # Join all processes
             fetch_process.join()
             decode_process.join()
             execute_process.join()
@@ -313,12 +313,10 @@ class MIPSPipeline:
 
             cycle += 1
 
-        # Wait for all processes to complete
-           
-
         # Display the final state of registers
         print("Final Register States:")
         # Display the tracked register states after each instruction
+        print("-----------------------------")
         print("Tracked Register States After Each Instruction:")
         allRegNames = ["$0", "$at", "$v0", "$v1", "$a0", "$a1", "$a2", "$a3", "$t0", "$t1", "$t2", "$t3", "$t4", "$t5", "$t6", "$t7", "$s0", "$s1", "$s2", "$s3", "$s4", "$s5", "$s6", "$s7", "$t8", "$t9", "$k0", "$k1", "$gp", "$sp", "$fp", "$ra"]
         for i, state in enumerate(self.register_states):
@@ -327,6 +325,9 @@ class MIPSPipeline:
             for j in range(32):
                 print(f"{allRegNames[j]}: {allRegValues[j]}")
             print() 
+        print("-----------------------------")
+
+        return self.register_states
 
 if __name__ == "__main__":
     mips_pipeline = MIPSPipeline(file_path="assets/binary.txt")

@@ -19,7 +19,7 @@ class MIPSAssembler:
         
         # Register mappings
         self.registers = {
-            '$zero': '00000', '$at': '00001', '$v0': '00010', '$v1': '00011', '$a0': '00100', '$a1': '00101', '$a2': '00110', '$a3': '00111',
+            '$0': '00000', '$at': '00001', '$v0': '00010', '$v1': '00011', '$a0': '00100', '$a1': '00101', '$a2': '00110', '$a3': '00111',
             '$t0': '01000', '$t1': '01001', '$t2': '01010', '$t3': '01011', '$t4': '01100', '$t5': '01101', '$t6': '01110', '$t7': '01111',
             '$s0': '10000', '$s1': '10001', '$s2': '10010', '$s3': '10011', '$s4': '10100', '$s5': '10101', '$s6': '10110', '$s7': '10111',
             '$t8': '11000', '$t9': '11001', '$k0':'11010','$k1':'11011', '$gp': '11100', '$sp': '11101', '$fp': '11110', '$ra': '11111'
@@ -75,29 +75,34 @@ class MIPSAssembler:
             resolved_instructions[i] = f"{op} " + ", ".join(operands)
         
         return resolved_instructions, labels
+    
+    def check_register_validity(self, reg):
+        """Ensure register is valid and $0 is not changed"""
+        if reg not in self.registers:
+            raise ValueError(f"Invalid register: {reg}")
+        if reg == '$0':
+            raise ValueError("Cannot modify $0 register (zero register)")
 
     def assemble_r_format(self, op, operands):
         """Convert R-format instruction to machine code"""
         opcode = '000000'
         
         if op in ['sll', 'srl', 'sra']:
-            rd = self.registers[operands[0]]
-            rt = self.registers[operands[1]]
-            shamt = self.decimal_to_binary(int(operands[2]), 5)
-            rs = '00000'
+            rd, rt, shamt = operands[0], operands[1], int(operands[2])
+            self.check_register_validity(rd)
+            self.check_register_validity(rt)
+            machine_code = opcode + '00000' + self.registers[rt] + self.registers[rd] + self.decimal_to_binary(shamt, 5) + self.r_format[op]
         elif op == 'jr':
-            rs = self.registers[operands[0]]
-            rt = '00000'
-            rd = '00000'
-            shamt = '00000'
+            rs = operands[0]
+            self.check_register_validity(rs)
+            machine_code = opcode + self.registers[rs] + '000000000000000' + self.r_format[op]
         else:
-            rd = self.registers[operands[0]]
-            rs = self.registers[operands[1]]
-            rt = self.registers[operands[2]]
-            shamt = '00000'
+            rd, rs, rt = operands[0], operands[1], operands[2]
+            self.check_register_validity(rd)
+            self.check_register_validity(rs)
+            self.check_register_validity(rt)
+            machine_code = opcode + self.registers[rs] + self.registers[rt] + self.registers[rd] + '00000' + self.r_format[op]
         
-        funct = self.r_format[op]
-        machine_code = opcode + rs + rt + rd + shamt + funct
         return machine_code
 
     def assemble_i_format(self, op, operands):
@@ -105,39 +110,38 @@ class MIPSAssembler:
         opcode = self.i_format[op]
         
         if op in ['lw', 'sw', 'lh', 'lhu', 'lb', 'lbu', 'sh', 'sb']:
-            rt = self.registers[operands[0]]
-            # Parse offset and base register from memory operand
-            offset, base = operands[1].split('(')
+            rt, offset_base = operands[0], operands[1]
+            offset, base = offset_base.split('(')
             base = base.rstrip(')')
-            rs = self.registers[base]
-            immediate = self.decimal_to_binary(offset, 16)
+            self.check_register_validity(rt)
+            self.check_register_validity(base)
+            machine_code = opcode + self.registers[base] + self.registers[rt] + self.decimal_to_binary(offset, 16)
         elif op in ['bgez', 'bgtz', 'blez', 'bltz']:
-            rs = self.registers[operands[0]]
-            rt = '00000'
-            immediate = self.decimal_to_binary(operands[1], 16)
+            rs, immediate = operands[0], operands[1]
+            self.check_register_validity(rs)
+            machine_code = opcode + self.registers[rs] + '00000' + self.decimal_to_binary(immediate, 16)
         else:
-            rt = self.registers[operands[0]]
-            rs = self.registers[operands[1]]
-            immediate = self.decimal_to_binary(operands[2], 16)
+            rt, rs, immediate = operands[0], operands[1], operands[2]
+            self.check_register_validity(rt)
+            self.check_register_validity(rs)
+            machine_code = opcode + self.registers[rs] + self.registers[rt] + self.decimal_to_binary(immediate, 16)
         
-        machine_code = opcode + rs + rt + immediate
         return machine_code
 
     def assemble_j_format(self, op, operands):
         """Convert J-format instruction to machine code"""
         opcode = self.j_format[op]
         address = self.decimal_to_binary(int(operands[0]), 26)
-        machine_code = opcode + address
-        return machine_code
+        return opcode + address
 
     def assemble_syscall(self):
         """Convert syscall to machine code"""
         return '00000000000000000000000000001100'  # Syscall in R-format with funct code 0xC
 
-    def assemble(self, instructions):
-        """Convert MIPS instruction to machine code"""
+    def assemble_binary(self, instructions):
+        """Convert MIPS instructions to binary machine code"""
         instructions, labels = self.resolve_labels(instructions)
-        machine_codes = []
+        binary_codes = []
         for instruction in instructions:
             op, operands = self.parse_instruction(instruction, labels)
             if op == 'syscall':
@@ -151,11 +155,14 @@ class MIPSAssembler:
             else:
                 raise ValueError(f"Unknown instruction: {op}")
             
-            # Convert binary to hexadecimal
-            hex_code = hex(int(binary, 2))[2:].zfill(8)
-            machine_codes.append(f"0x{hex_code}  {binary}")
+            binary_codes.append(binary)
         
-        return machine_codes, labels
+        return binary_codes
+
+    def format_machine_codes(self, binary_codes):
+        """Convert binary codes to hexadecimal format and format as string"""
+        formatted_codes = [f"0x{hex(int(binary, 2))[2:].zfill(8)} => {binary}" for binary in binary_codes]
+        return formatted_codes
 
     def parse_asm(self, file_path):
         instructions = []
@@ -178,10 +185,11 @@ def main():
     print(f"{'Instruction':<25} {'Hex':<12} Binary")
     print("-" * 60)
 
-    machine_codes, labels = assembler.assemble(test_instructions)
+    machine_codes = assembler.assemble_binary(test_instructions)
+    format_code = assembler.format_machine_codes(machine_codes)
     
-    for machine_code in machine_codes:
-        print(machine_code)
+    for code in format_code:
+        print(code)
 
 if __name__ == "__main__":
     main()

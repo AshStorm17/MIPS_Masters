@@ -1,6 +1,8 @@
 import streamlit as st
+import pandas as pd
 from pipeline import MIPSPipeline
 from utils.assembler import MIPSAssembler
+from components.alu import signedVal
 import tempfile
 import os
 
@@ -22,12 +24,13 @@ def main():
         test_instructions = assembler.parse_asm(file_path)
 
         # Assemble instructions to machine code
-        machine_codes, labels = assembler.assemble(test_instructions)
+        machine_codes = assembler.assemble_binary(test_instructions)
+        format_code = assembler.format_machine_codes(machine_codes)
 
         st.write("MIPS Assembly to Machine Code Conversion:")
         st.write("-" * 60)
-        for machine_code in machine_codes:
-            st.write(machine_code)
+        for code in format_code:
+            st.write(code)
         st.write("-" * 60)
 
         # Save binary code temporarily
@@ -41,10 +44,30 @@ def main():
         if run_pipeline:
             # Initialize the MIPS pipeline using the binary file path
             pipeline = MIPSPipeline(binary_file_path)
-            
             st.subheader("MIPS Pipeline Execution (Cycle-by-Cycle):")
             
-            pass
+            # Execute the pipeline cycle-by-cycle
+            register_states = pipeline.run_pipeline()
+            
+            # Convert the list of register states into a DataFrame
+            allRegNames = ["$0", "$at", "$v0", "$v1", "$a0", "$a1", "$a2", "$a3", "$t0", "$t1", "$t2", "$t3", "$t4", "$t5", "$t6", "$t7", "$s0", "$s1", "$s2", "$s3", "$s4", "$s5", "$s6", "$s7", "$t8", "$t9", "$k0", "$k1", "$gp", "$sp", "$fp", "$ra"]
+            
+            register_states_per_cycle = []  # List to hold all register states for each cycle
+
+            # Process each cycle (state) and collect register values
+            for i, state in enumerate(register_states):
+                # Convert each register value using signedVal
+                allRegValues = [signedVal(val) for val in state]
+                register_states_per_cycle.append(allRegValues)
+
+            # Create a DataFrame from the collected register states
+            register_df = pd.DataFrame(register_states_per_cycle, columns=allRegNames)
+
+            # Display the register states as a table
+            st.write("Register States Over Cycles:")
+            st.dataframe(register_df)
+
+            st.write("Pipeline execution completed.")
         
         # Clean up the temporary file
         os.remove(file_path)
