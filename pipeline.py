@@ -348,7 +348,10 @@ class MIPSPipeline:
         allRegNames = ["$0", "$at", "$v0", "$v1", "$a0", "$a1", "$a2", "$a3", "$t0", "$t1", "$t2", "$t3", "$t4", "$t5", "$t6", "$t7", "$s0", "$s1", "$s2", "$s3", "$s4", "$s5", "$s6", "$s7", "$t8", "$t9", "$k0", "$k1", "$gp", "$sp", "$fp", "$ra"]
         for i, state in enumerate(self.register_states):
             allRegValues = [signedVal(val) for val in state]
-            print(f"Instruction {i+1}:")
+            if i==0:
+                print("Initial Values:")
+            else: 
+                print(f"Instruction {i}:")
             for j in range(32):
                 print(f"{allRegNames[j]}: {allRegValues[j]}")
             print() 
