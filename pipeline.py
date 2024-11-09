@@ -38,6 +38,7 @@ class MIPSPipeline:
 
         # Use a Manager to create a shared list for register states
         self.register_states = manager.list()
+        self.register_states.append(self.registers.reg.copy())
 
     def is_halt_instruction(self, IR):
         """Check if an instruction is a halt instruction (`syscall` or `jr $ra`)."""
@@ -137,9 +138,8 @@ class MIPSPipeline:
                 'RS': id_ex_data['RS'],
             }
 
-            # Include RT only for R-type and J-type instructions
-            if not inst.type == 2:  # R-type or J-type
-                id_ex_data['RT'] = self.registers.read(int(fields['rt'], 2))  # Read RT register
+            if not inst.type == 2:  # RT for I and J types
+                id_ex_data['RT'] = int(fields['rt'], 2)  
                 decoded_values['RT'] = id_ex_data['RT']
             
             # Add Immediate or Address if they exist
@@ -259,7 +259,7 @@ class MIPSPipeline:
             
             elif type == 1 and inst['op'][:3] == "101":  # Store instruction
                 address = execute_data['ALU_result']
-                store_data = signedBin(execute_data['RT'])
+                store_data = signedBin(self.registers.read(execute_data['RT']))
                 for i in range(4):
                     self.memory.store(address + i, store_data[i*8:(i+1)*8])  # Store each byte individually
                 memory_data['RD'] = None
