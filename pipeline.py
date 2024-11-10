@@ -9,7 +9,7 @@ from hazard import HazardManager
 class MIPSPipeline:
     def __init__(self, file_path):
         # Initialize components
-        self.memory = Memory()
+        self.memory = Memory(initialise=True)
         self.stall = False
         mips_parser = MIPSParser()
         instructions_parsed = mips_parser.parse_mips_file(file_path)
@@ -110,7 +110,7 @@ class MIPSPipeline:
             
             try:
                 rs_value = self.registers.read(int(fields['rs'], 2))
-            except ValueError:
+            except:
                 rs_value = 0
         
             # Prepare the data to send to the ID_EX stage
@@ -138,8 +138,8 @@ class MIPSPipeline:
                 'RS': id_ex_data['RS'],
             }
 
-            if not inst.type == 2:  # RT for I and J types
-                id_ex_data['RT'] = int(fields['rt'], 2)  
+            if not inst.type == 2:  # RT for R and I types
+                id_ex_data['RT'] = self.registers.read(int(fields['rt'], 2))
                 decoded_values['RT'] = id_ex_data['RT']
             
             # Add Immediate or Address if they exist
@@ -176,26 +176,31 @@ class MIPSPipeline:
             ex_mem_data = self.pipeline_registers['EX_MEM']
             mem_wb_data = self.pipeline_registers['MEM_WB']
 
-            rs = int(inst['rs'], 2)
-            rt = int(inst['rt'], 2)
-            forward_a, forward_b = self.hazard_manager.check_data_hazard(rs, rt, ex_mem_data, mem_wb_data)
-            
-            # Get forwarded values if needed
-            src1 = self.hazard_manager.get_forwarded_value(rs, forward_a, ex_mem_data, mem_wb_data)
-            src2 = self.hazard_manager.get_forwarded_value(rt, forward_b, ex_mem_data, mem_wb_data)
-
             # Simulated ALU operations based on instruction type
             if type == 0:  # R-type
+                rs = int(inst['rs'], 2)
+                rt = int(inst['rt'], 2)
+                forward_a, forward_b = self.hazard_manager.check_data_hazard(rs, rt, ex_mem_data, mem_wb_data)
+                # Get forwarded values if needed
+                src1 = self.hazard_manager.get_forwarded_value(rs, forward_a, ex_mem_data, mem_wb_data)
+                src2 = self.hazard_manager.get_forwarded_value(rt, forward_b, ex_mem_data, mem_wb_data)
                 if inst['funct'] == '001000':  # jr
                     with self.pc_lock:
                         self.PC.value = src1
                 elif inst['funct'][:3] == "000":  # Shift operations
                     result['ALU_result'] = self.alu.alu_shift(inst['funct'], src1, int(inst['shamt'], 2))
+                    result['RD'] = int(inst['rd'], 2)
                 else:  # Arithmetic/logical operations
                     result['ALU_result'] = self.alu.alu_arith(inst['funct'], src1, src2)
                     result['RD'] = int(inst['rd'], 2)
             
             elif type == 1:  # I-type
+                rs = int(inst['rs'], 2)
+                rt = int(inst['rt'], 2)
+                forward_a, forward_b = self.hazard_manager.check_data_hazard(rs, rt, ex_mem_data, mem_wb_data)
+                # Get forwarded values if needed
+                src1 = self.hazard_manager.get_forwarded_value(rs, forward_a, ex_mem_data, mem_wb_data)
+                src2 = self.hazard_manager.get_forwarded_value(rt, forward_b, ex_mem_data, mem_wb_data)
                 imm = decoded_data.get('Immediate', 0)
 
                 if inst['op'][:3] == "100":  # Load
@@ -204,7 +209,7 @@ class MIPSPipeline:
                 elif inst['op'][:3] == "101":  # Store
                     result['ALU_result'] = self.alu.giveAddr(src1, imm)
                     result['RT'] = decoded_data.get('RT', 0)  # Default to 0 if not present
-                elif inst['op'][:3] == "000":
+                elif inst['op'][:3] == "000": # beq, bne (Conditional Branch instructions)
                     if (imm & 0x8000): #sign extend
                         imm= imm | 0xFFFF0000
                     a_equal= self.alu.isEqual(src1, src2)
@@ -253,15 +258,46 @@ class MIPSPipeline:
 
             if type == 1 and inst['op'][:3] == "100":  # Load instruction
                 address = execute_data['ALU_result']
-                mem_data = "".join(self.memory.load(address + i) for i in range(4))  # Load 4 bytes
-                memory_data['Mem_data'] = signedVal(mem_data)
+
+                # op[3:6] = 000 | 001 | 011 | 100 | 101
+                # load    = lb  | lh  | lw  | lbu | lhu
+
+                match inst['op'][3:6]:
+                    case "000": #lb
+                        loaded_binary = self.memory.load(address)
+                        memory_data['Mem_data'] = signedVal(loaded_binary)
+                    case "001": #lh
+                        loaded_binary = "".join([self.memory.load(address+i) for i in range(2)])
+                        memory_data['Mem_data'] = signedVal(loaded_binary)
+                    case "011": #lw
+                        loaded_binary = "".join([self.memory.load(address+i) for i in range(4)])
+                        memory_data['Mem_data'] = signedVal(loaded_binary)
+                    case "100": # lbu
+                        loaded_binary = self.memory.load(address)
+                        memory_data['Mem_data'] = int(loaded_binary, 2)
+                    case "101": #lhu
+                        loaded_binary = "".join([self.memory.load(address+i) for i in range(2)])
+                        memory_data['Mem_data'] = int(loaded_binary, 2)
+
                 memory_data['RD'] = execute_data['RD']
-            
+
             elif type == 1 and inst['op'][:3] == "101":  # Store instruction
-                address = execute_data['ALU_result']
-                store_data = signedBin(self.registers.read(execute_data['RT']))
-                for i in range(4):
-                    self.memory.store(address + i, store_data[i*8:(i+1)*8])  # Store each byte individually
+                mem_addr = execute_data['ALU_result']
+                store_data32 = signedBin(execute_data['RT'])
+
+                # op[3:6] = 000 | 001 | 011
+                # store   = sb  | sh  | sw
+
+                match inst['op'][3:6]:
+                    case "000": #sb
+                        self.memory.store(mem_addr, store_data32[24:])
+                    case "001": #sh
+                        self.memory.store(mem_addr, store_data32[16:24])
+                        self.memory.store(mem_addr + 1, store_data32[24:])
+                    case "011": #sw
+                        for i in range(4):
+                            self.memory.store(mem_addr + i, store_data32[8*i:8*(i+1)])  
+                
                 memory_data['RD'] = None
             
             else:  # No memory access, pass ALU result
@@ -285,9 +321,21 @@ class MIPSPipeline:
             if reg_dst: # if reg_dst is none, branch instruction, no write_back required
                 # Perform the write-back operation
                 if type == 1 and inst['op'][:3] == "100":  # Load instruction
-                    self.registers.write(reg_dst, memory_data['Mem_data'])
+                    match inst['op'][3:6]:
+                        # self.registers.write() method takes register number and 32 bit binary
+                        case "000": #lb (signed)
+                            self.registers.write(reg_dst, signedBin(memory_data['Mem_data'])) 
+                        case "001": #lh (signed)
+                            self.registers.write(reg_dst, signedBin(memory_data['Mem_data']))
+                        case "011": #lw (full word)
+                            self.registers.write(reg_dst, signedBin(memory_data['Mem_data']))
+                        case "100": # lbu (unsigned)
+                            self.registers.write(reg_dst, format(memory_data['Mem_data'], '032b'))
+                        case "101": #lhu (unsigned)
+                            self.registers.write(reg_dst, format(memory_data['Mem_data'], '032b'))
+
                 elif type in [0, 1]:  # R-type or I-type ALU instruction
-                    self.registers.write(reg_dst, memory_data['ALU_result'])
+                    self.registers.write(reg_dst, signedBin(memory_data['ALU_result']))
 
             # Store the register state
             self.register_states.append(self.registers.reg.copy())
@@ -360,5 +408,9 @@ class MIPSPipeline:
         return self.register_states
 
 if __name__ == "__main__":
+<<<<<<< HEAD
     mips_pipeline = MIPSPipeline(file_path="assets\\binary_2.txt")
+=======
+    mips_pipeline = MIPSPipeline(file_path="assets/tests/lh_lbu_test.txt")
+>>>>>>> f56cf14e87e0fa852e92bb8cabbf867b305d6aaa
     mips_pipeline.run_pipeline()

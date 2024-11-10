@@ -178,7 +178,7 @@ def main():
     assembler = MIPSAssembler()
     
     # Replace with the path to your assembly code file
-    test_instructions = assembler.parse_asm("assets\mipsasm_1.asm")
+    test_instructions = assembler.parse_asm("../assets/tests/lh_lbu_test.asm")
 
     print("MIPS Assembly to Machine Code Conversion:")
     print("-" * 60)
@@ -191,7 +191,7 @@ def main():
     save=True
     if (save):
         #write machine code to text file
-        file_path="assets\\binary_2.txt"
+        file_path="../assets/tests/lh_lbu_test.txt"
         with open(file_path, 'w') as file:
                 for code in machine_codes:
                     file.write(f"{code}\n")
