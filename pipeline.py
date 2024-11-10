@@ -408,5 +408,5 @@ class MIPSPipeline:
         return self.register_states
 
 if __name__ == "__main__":
-    mips_pipeline = MIPSPipeline(file_path="assets/tests/lh_lbu_test.txt")
+    mips_pipeline = MIPSPipeline(file_path="tests/lh_lbu_test.txt")
     mips_pipeline.run_pipeline()
