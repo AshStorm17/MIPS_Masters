@@ -41,7 +41,7 @@ class MIPSAssembler:
         binary = bin(decimal)[2:].zfill(bits)
         return binary[-bits:]
 
-    def parse_instruction(self, instruction, labels):
+    def parse_instruction(self, instruction, labels,inst_line_num):
         """Parse MIPS instruction into components and resolve labels"""
         instruction = instruction.split('#')[0].strip()
         parts = instruction.replace(',', '').split()
@@ -50,7 +50,7 @@ class MIPSAssembler:
 
         # Check if the last operand is a label and replace it with the resolved address/offset
         if operands and operands[-1] in labels:
-            operands[-1] = str(labels[operands[-1]])  # Resolve label to its corresponding address or offset
+            operands[-1] = str(labels[operands[-1]]-inst_line_num)  # Resolve label to its corresponding address or offset
         return op, operands
 
     def resolve_labels(self, instructions):
@@ -71,7 +71,7 @@ class MIPSAssembler:
 
         # Second pass: Replace labels with their resolved addresses
         for i, instruction in enumerate(resolved_instructions):
-            op, operands = self.parse_instruction(instruction, labels)
+            op, operands = self.parse_instruction(instruction, labels,i+1)
             resolved_instructions[i] = f"{op} " + ", ".join(operands)
         
         return resolved_instructions, labels
@@ -200,5 +200,14 @@ def main():
     for code in format_code:
         print(code)
 
+def check_resolve_inst():
+    assembler = MIPSAssembler()
+    
+    # Replace with the path to your assembly code file
+    test_instructions = assembler.parse_asm("assets\mipsasm_1.asm")
+    instructions, labels = assembler.resolve_labels(test_instructions)
+    print(instructions,'------------',labels)
+
 if __name__ == "__main__":
-    main()
+    # main()
+    check_resolve_inst()
