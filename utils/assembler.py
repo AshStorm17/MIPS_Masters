@@ -142,8 +142,8 @@ class MIPSAssembler:
         """Convert MIPS instructions to binary machine code"""
         instructions, labels = self.resolve_labels(instructions)
         binary_codes = []
-        for instruction in instructions:
-            op, operands = self.parse_instruction(instruction, labels)
+        for i, instruction in enumerate(instructions):
+            op, operands = self.parse_instruction(instruction, labels, i+1)
             if op == 'syscall':
                 binary = self.assemble_syscall()
             elif op in self.r_format:
@@ -204,10 +204,10 @@ def check_resolve_inst():
     assembler = MIPSAssembler()
     
     # Replace with the path to your assembly code file
-    test_instructions = assembler.parse_asm("assets\mipsasm_1.asm")
+    test_instructions = assembler.parse_asm("../assets/mipsasm_1.asm")
     instructions, labels = assembler.resolve_labels(test_instructions)
     print(instructions,'------------',labels)
 
 if __name__ == "__main__":
-    # main()
-    check_resolve_inst()
+    main()
+    # check_resolve_inst()

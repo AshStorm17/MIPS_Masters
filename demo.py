@@ -12,7 +12,7 @@ from utils.assembler import MIPSAssembler
 
 if __name__=="__main__":
     assembler = MIPSAssembler()
-    test_instructions = assembler.parse_asm("assets\mipsasm_1.asm")
+    test_instructions = assembler.parse_asm("assets/mipsasm_1.asm")
     machine_codes = assembler.assemble_binary(test_instructions)
     save=True
     file_path="assets\\binary_2.txt"
