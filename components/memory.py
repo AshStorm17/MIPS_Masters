@@ -3,6 +3,11 @@ class Memory:
         self.data = [""]*4*1024 # 1024 words # byte addressing
         if initialise==True:
             self.data = [format(0, '008b')]*4*1024 # initialise with all 0's
+            # test data filled for loading
+            self.data[1000] = "11111011" 
+            self.data[1001] = "00001111"
+            self.data[1002] = "00000010"
+            self.data[1003] = "00000001"
 
     # stores a byte
     def store(self, addr, value): 
