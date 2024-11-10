@@ -20,13 +20,21 @@ class ALU:
 
     def alu_shift(self, operation, opr1, shamt):
         """Perform shift operations."""
+        opr1 = signedBin(opr1)
+        ans = ""
         match operation:
             case "000000":  # sll
-                return opr1 << shamt  # Left shift
+                ans = opr1[shamt:] + ("0" * min(32, shamt))
             case "000010":  # srl
-                return opr1 >> shamt  # Logical right shift
+                ans = ("0"*min(32, shamt)) + opr1[:-1*shamt] 
             case "000011":  # sra
-                return opr1 >> shamt  # Arithmetic right shift
+                # Arithmetic right shift, preserving the sign
+                if signedVal(opr1)<0: 
+                    ans = ("1"*min(32, shamt)) + opr1[:-1*shamt] 
+                else:
+                    # same as srl
+                    ans = ("0"*min(32, shamt)) + opr1[:-1*shamt] 
+        return signedVal(ans)
 
     def alu_arith(self, operation, opr1, opr2):
         """Perform arithmetic operations."""
@@ -64,8 +72,6 @@ class ALU:
                 return signedVal(src) & signedVal(immediate)
             case "101":  # ori
                 return signedVal(src) | signedVal(immediate)
-            case "111":  # lui
-                return signedVal(immediate) << 16
 
     def giveAddr(self, baseAddr, lower16bits):
         """
