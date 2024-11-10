@@ -242,7 +242,7 @@ class MIPSPipeline:
         if execute_data is not None:
             
             if execute_data is None:  # End signal
-                self.pipeline_registers['MEM_WB'] = None
+                self.pipeline_registers['MEM_WB'] = None #ye kya hai???
                 return
             
             inst = execute_data['instruction']
