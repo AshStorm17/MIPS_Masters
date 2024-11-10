@@ -9,7 +9,7 @@ from hazard import HazardManager
 class MIPSPipeline:
     def __init__(self, file_path):
         # Initialize components
-        self.memory = Memory()
+        self.memory = Memory(initialise=True)
         self.stall = False
         mips_parser = MIPSParser()
         instructions_parsed = mips_parser.parse_mips_file(file_path)
@@ -138,7 +138,7 @@ class MIPSPipeline:
                 'RS': id_ex_data['RS'],
             }
 
-            if not inst.type == 2:  # RT for I and J types
+            if not inst.type == 2:  # RT for R and I types
                 id_ex_data['RT'] = self.registers.read(int(fields['rt'], 2))
                 decoded_values['RT'] = id_ex_data['RT']
             
@@ -262,16 +262,16 @@ class MIPSPipeline:
                         loaded_binary = self.memory.load(address)
                         memory_data['Mem_data'] = signedVal(loaded_binary)
                     case "001": #lh
-                        loaded_binary = "".join(self.memory.load(address+i) for i in range(2))
+                        loaded_binary = "".join([self.memory.load(address+i) for i in range(2)])
                         memory_data['Mem_data'] = signedVal(loaded_binary)
                     case "011": #lw
-                        loaded_binary = "".join(self.memory.load(address+i) for i in range(4))
+                        loaded_binary = "".join([self.memory.load(address+i) for i in range(4)])
                         memory_data['Mem_data'] = signedVal(loaded_binary)
                     case "100": # lbu
                         loaded_binary = self.memory.load(address)
                         memory_data['Mem_data'] = int(loaded_binary, 2)
                     case "101": #lhu
-                        loaded_binary = "".join(self.memory.load(address+i) for i in range(2))
+                        loaded_binary = "".join([self.memory.load(address+i) for i in range(2)])
                         memory_data['Mem_data'] = int(loaded_binary, 2)
 
                 memory_data['RD'] = execute_data['RD']
@@ -403,5 +403,5 @@ class MIPSPipeline:
         return self.register_states
 
 if __name__ == "__main__":
-    mips_pipeline = MIPSPipeline(file_path="assets/hex.txt")
+    mips_pipeline = MIPSPipeline(file_path="assets/tests/load_half.txt")
     mips_pipeline.run_pipeline()
