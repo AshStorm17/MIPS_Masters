@@ -29,10 +29,10 @@ class Registers:
             self.reg[10] = format(1, '032b')  # $t2 = 1
             self.reg[12] = format(20, '032b')  # $t4 = 20
 
-    def write(self, number, value):
+    def write(self, number, binStr32):
         if number==0: # skip writing to $0
             return
-        self.reg[number] = signedBin(value)  # Store value as binary string
+        self.reg[number] = binStr32  # Store value as binary string
 
     def read(self, number):
         return signedVal(self.reg[number])  # Convert binary string to integer
