@@ -38,6 +38,7 @@ class MIPSPipeline:
 
         # Use a Manager to create a shared list for register states
         self.register_states = manager.list()
+        self.register_states.append(self.registers.reg.copy())
 
     def is_halt_instruction(self, IR):
         """Check if an instruction is a halt instruction (`syscall` or `jr $ra`)."""
@@ -68,6 +69,7 @@ class MIPSPipeline:
                 IR = instruction_data
                 if self.is_halt_instruction(IR):
                     self.pipeline_registers['IF_ID'] = None
+                    print(f"Fetch Stage: Instruction at PC {self.PC.value} fetched, Halt instruction detected")
                     self.halt.value = 1
                     self.PC.value += 4
                     return  # Exit when halt instruction is reached
@@ -136,9 +138,8 @@ class MIPSPipeline:
                 'RS': id_ex_data['RS'],
             }
 
-            # Include RT only for R-type and J-type instructions
-            if not inst.type == 2:  # R-type or J-type
-                id_ex_data['RT'] = self.registers.read(int(fields['rt'], 2))  # Read RT register
+            if not inst.type == 2:  # RT for I and J types
+                id_ex_data['RT'] = int(fields['rt'], 2)  
                 decoded_values['RT'] = id_ex_data['RT']
             
             # Add Immediate or Address if they exist
@@ -213,7 +214,6 @@ class MIPSPipeline:
                         self.pipeline_registers["ID_EX"] = None
                         with self.pc_lock:
                             self.PC.value = self.PC.value + (imm<<2) - 4
-                        print(self.PC.value)
                     result['ALU_result'] = None
                     result['RD'] = None
                 else:  # Arithmetic/logical operations
@@ -242,7 +242,7 @@ class MIPSPipeline:
         if execute_data is not None:
             
             if execute_data is None:  # End signal
-                self.pipeline_registers['MEM_WB'] = None #ye kya hai???
+                self.pipeline_registers['MEM_WB'] = None
                 return
             
             inst = execute_data['instruction']
@@ -259,7 +259,7 @@ class MIPSPipeline:
             
             elif type == 1 and inst['op'][:3] == "101":  # Store instruction
                 address = execute_data['ALU_result']
-                store_data = signedBin(execute_data['RT'])
+                store_data = signedBin(self.registers.read(execute_data['RT']))
                 for i in range(4):
                     self.memory.store(address + i, store_data[i*8:(i+1)*8])  # Store each byte individually
                 memory_data['RD'] = None
@@ -285,7 +285,6 @@ class MIPSPipeline:
             if reg_dst: # if reg_dst is none, branch instruction, no write_back required
                 # Perform the write-back operation
                 if type == 1 and inst['op'][:3] == "100":  # Load instruction
-                    print(reg_dst, memory_data["Mem_data"])
                     self.registers.write(reg_dst, memory_data['Mem_data'])
                 elif type in [0, 1]:  # R-type or I-type ALU instruction
                     self.registers.write(reg_dst, memory_data['ALU_result'])
@@ -308,19 +307,19 @@ class MIPSPipeline:
         cycle = 1
         while not self.empty_pipeline(self.halt, self.pipeline_registers):
             print("Cycle ", cycle)
-            
             # Get the data from pipeline registers
             fetched_data = self.pipeline_registers["IF_ID"]
             decoded_data = self.pipeline_registers["ID_EX"] 
             execute_data = self.pipeline_registers["EX_MEM"]
             memory_data = self.pipeline_registers["MEM_WB"]
+            stall = self.stall
             # Initialize processes for each stage
-            fetch_process = multiprocessing.Process(target=self.fetch_stage)
-            decode_process = multiprocessing.Process(target=self.decode_stage(fetched_data))
-            execute_process = multiprocessing.Process(target=self.execute_stage(decoded_data))
+            if not stall:
+                fetch_process = multiprocessing.Process(target=self.fetch_stage)
+                decode_process = multiprocessing.Process(target=self.decode_stage(fetched_data))
+                execute_process = multiprocessing.Process(target=self.execute_stage(decoded_data))
             mem_access_process = multiprocessing.Process(target=self.memory_access_stage(execute_data))
             write_back_process = multiprocessing.Process(target=self.write_back_stage(memory_data))
-            stall = self.stall
             # Start all processes
             if not stall:
                 fetch_process.start()
@@ -338,6 +337,7 @@ class MIPSPipeline:
             write_back_process.join() 
             if stall == True:
                 self.stall = False
+                self.pipeline_registers["EX_MEM"] = None
             cycle += 1
 
         # Display the final state of registers
@@ -348,7 +348,10 @@ class MIPSPipeline:
         allRegNames = ["$0", "$at", "$v0", "$v1", "$a0", "$a1", "$a2", "$a3", "$t0", "$t1", "$t2", "$t3", "$t4", "$t5", "$t6", "$t7", "$s0", "$s1", "$s2", "$s3", "$s4", "$s5", "$s6", "$s7", "$t8", "$t9", "$k0", "$k1", "$gp", "$sp", "$fp", "$ra"]
         for i, state in enumerate(self.register_states):
             allRegValues = [signedVal(val) for val in state]
-            print(f"Instruction {i+1}:")
+            if i==0:
+                print("Initial Values:")
+            else: 
+                print(f"Instruction {i}:")
             for j in range(32):
                 print(f"{allRegNames[j]}: {allRegValues[j]}")
             print() 
