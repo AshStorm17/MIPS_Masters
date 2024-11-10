@@ -110,7 +110,7 @@ class MIPSPipeline:
             
             try:
                 rs_value = self.registers.read(int(fields['rs'], 2))
-            except ValueError:
+            except:
                 rs_value = 0
         
             # Prepare the data to send to the ID_EX stage
@@ -176,26 +176,31 @@ class MIPSPipeline:
             ex_mem_data = self.pipeline_registers['EX_MEM']
             mem_wb_data = self.pipeline_registers['MEM_WB']
 
-            rs = int(inst['rs'], 2)
-            rt = int(inst['rt'], 2)
-            forward_a, forward_b = self.hazard_manager.check_data_hazard(rs, rt, ex_mem_data, mem_wb_data)
-            
-            # Get forwarded values if needed
-            src1 = self.hazard_manager.get_forwarded_value(rs, forward_a, ex_mem_data, mem_wb_data)
-            src2 = self.hazard_manager.get_forwarded_value(rt, forward_b, ex_mem_data, mem_wb_data)
-
             # Simulated ALU operations based on instruction type
             if type == 0:  # R-type
+                rs = int(inst['rs'], 2)
+                rt = int(inst['rt'], 2)
+                forward_a, forward_b = self.hazard_manager.check_data_hazard(rs, rt, ex_mem_data, mem_wb_data)
+                # Get forwarded values if needed
+                src1 = self.hazard_manager.get_forwarded_value(rs, forward_a, ex_mem_data, mem_wb_data)
+                src2 = self.hazard_manager.get_forwarded_value(rt, forward_b, ex_mem_data, mem_wb_data)
                 if inst['funct'] == '001000':  # jr
                     with self.pc_lock:
                         self.PC.value = src1
                 elif inst['funct'][:3] == "000":  # Shift operations
                     result['ALU_result'] = self.alu.alu_shift(inst['funct'], src1, int(inst['shamt'], 2))
+                    result['RD'] = int(inst['rd'], 2)
                 else:  # Arithmetic/logical operations
                     result['ALU_result'] = self.alu.alu_arith(inst['funct'], src1, src2)
                     result['RD'] = int(inst['rd'], 2)
             
             elif type == 1:  # I-type
+                rs = int(inst['rs'], 2)
+                rt = int(inst['rt'], 2)
+                forward_a, forward_b = self.hazard_manager.check_data_hazard(rs, rt, ex_mem_data, mem_wb_data)
+                # Get forwarded values if needed
+                src1 = self.hazard_manager.get_forwarded_value(rs, forward_a, ex_mem_data, mem_wb_data)
+                src2 = self.hazard_manager.get_forwarded_value(rt, forward_b, ex_mem_data, mem_wb_data)
                 imm = decoded_data.get('Immediate', 0)
 
                 if inst['op'][:3] == "100":  # Load
@@ -325,9 +330,9 @@ class MIPSPipeline:
                         case "011": #lw (full word)
                             self.registers.write(reg_dst, signedBin(memory_data['Mem_data']))
                         case "100": # lbu (unsigned)
-                            self.registers.write(reg_dst, format(memory_data['Mem_data']), '032b')
+                            self.registers.write(reg_dst, format(memory_data['Mem_data'], '032b'))
                         case "101": #lhu (unsigned)
-                            self.registers.write(reg_dst, format(memory_data['Mem_data']), '032b')
+                            self.registers.write(reg_dst, format(memory_data['Mem_data'], '032b'))
 
                 elif type in [0, 1]:  # R-type or I-type ALU instruction
                     self.registers.write(reg_dst, signedBin(memory_data['ALU_result']))
@@ -403,5 +408,5 @@ class MIPSPipeline:
         return self.register_states
 
 if __name__ == "__main__":
-    mips_pipeline = MIPSPipeline(file_path="assets/tests/load_half.txt")
+    mips_pipeline = MIPSPipeline(file_path="assets/tests/lh_lbu_test.txt")
     mips_pipeline.run_pipeline()
