@@ -35,7 +35,7 @@ class HazardManager:
                 forward_b = 1
                 
         # MEM/WB hazard
-        elif mem_wb_data and 'RD' in mem_wb_data:
+        if mem_wb_data and 'RD' in mem_wb_data:
             if rs == mem_wb_data['RD'] and rs != 0:
                 forward_a = 2
             if rt == mem_wb_data['RD'] and rt != 0:
