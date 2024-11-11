@@ -80,8 +80,6 @@ class MIPSAssembler:
         """Ensure register is valid and $0 is not changed"""
         if reg not in self.registers:
             raise ValueError(f"Invalid register: {reg}")
-        if reg == '$0':
-            raise ValueError("Cannot modify $0 register (zero register)")
 
     def assemble_r_format(self, op, operands):
         """Convert R-format instruction to machine code"""

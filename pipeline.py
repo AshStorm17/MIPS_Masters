@@ -188,7 +188,7 @@ class MIPSPipeline:
                     with self.pc_lock:
                         self.PC.value = src1
                 elif inst['funct'][:3] == "000":  # Shift operations
-                    result['ALU_result'] = self.alu.alu_shift(inst['funct'], src1, int(inst['shamt'], 2))
+                    result['ALU_result'] = self.alu.alu_shift(inst['funct'], src2, int(inst['shamt'], 2))
                     result['RD'] = int(inst['rd'], 2)
                 else:  # Arithmetic/logical operations
                     result['ALU_result'] = self.alu.alu_arith(inst['funct'], src1, src2)
@@ -229,14 +229,14 @@ class MIPSPipeline:
                 addr = int(inst['address'], 2)
                 if inst['op'][3:] == '010':  # j (jump)
                     with self.pc_lock:
-                        self.PC.value = (self.PC.value & 0xF0000000) | (addr << 2)
+                        self.PC.value = self.PC.value + (addr<<2) - 4
                     self.pipeline_registers["IF_ID"] = None
                     self.pipeline_registers["ID_EX"] = None
                     result=None
                 elif inst['op'][3:] == '011':  # jal (jump and link)
                     self.registers.write(31, self.PC.value + 4)
                     with self.pc_lock:
-                        self.PC.value = (self.PC.value & 0xF0000000) | (addr << 2)
+                        self.PC.value = self.PC.value + (addr<<2) - 4
                     self.pipeline_registers["IF_ID"] = None
                     self.pipeline_registers["ID_EX"] = None
                     result=None

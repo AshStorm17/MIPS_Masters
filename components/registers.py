@@ -24,11 +24,11 @@ class Registers:
         if initialise:
             for i in range(1, 29):
                 self.reg[i] = format(0, '032b')  # Initialize s0-s7 and temporaries with 0's
-            self.reg[8] = format(5, '032b')  # $t0 = 5
+            """self.reg[8] = format(5, '032b')  # $t0 = 5
             self.reg[9] = format(10, '032b')  # $t1 = 10
             self.reg[10] = format(1, '032b')  # $t2 = 1
             self.reg[12] = format(20, '032b')  # $t4 = 20
-            self.reg[14] = format(229388, '032b')  # $t6 = 229388
+            self.reg[14] = format(229388, '032b')  # $t6 = 229388"""
 
     def write(self, number, binStr32):
         if number==0: # skip writing to $0
