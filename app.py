@@ -100,15 +100,15 @@ def main_2():
                         "$s0", "$s1", "$s2", "$s3", "$s4", "$s5", "$s6", "$s7",
                         "$t8", "$t9", "$k0", "$k1", "$gp", "$sp", "$fp", "$ra"]
         register_states_per_cycle = []
-
+        
         # Process each cycle (state) and collect register values
         for i, state in enumerate(register_states):
             # Convert each register value using signedVal
             all_reg_values = [signedVal(val) for val in state]
             register_states_per_cycle.append(all_reg_values)
-
+        index_labels = ['Initial Value'] + [f'I{i}' for i in range(1, len(register_states))]
         # Create a DataFrame from the collected register states
-        register_df = pd.DataFrame(register_states_per_cycle, columns=all_reg_names)
+        register_df = pd.DataFrame(register_states_per_cycle, columns=all_reg_names,index=index_labels)
 
         # Display the register states over cycles
         st.write("Register States Over Cycles:")
@@ -120,7 +120,12 @@ def main_2():
 
         for i, tab in enumerate(tabs):
             with tab:
-                st.dataframe(register_df.iloc[:, i*8:(i+1)*8])
+                start_idx = i * 8
+                end_idx = min(start_idx + 8, len(all_reg_names))
+                # Display DataFrame with index column renamed to "Instructions"
+                styled_df = register_df.iloc[:, start_idx:end_idx].copy()
+                styled_df.index.name = "Instructions"
+                st.dataframe(styled_df)
 
         st.write("Pipeline execution completed.")
 
