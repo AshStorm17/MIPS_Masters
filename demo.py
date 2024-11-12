@@ -16,7 +16,7 @@ if __name__=="__main__":
     machine_codes = assembler.assemble_binary(test_instructions)
     print(machine_codes)
     save=True
-    file_path="assets/binary_2.txt"
+    file_path="tests/store_half.txt"
     if (save):
         #write machine code to text file   
         with open(file_path, 'w') as file:
