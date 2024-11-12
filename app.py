@@ -135,7 +135,13 @@ def main_2():
         with container:
             for entry in io_memory:
                 st.markdown(f"- {entry}")
+        
         st.write("Pipeline execution completed.")
+        
+        with st.expander("View Memory Component"):
+            st.write("Memory Data:")
+            
+            st.write(pipeline.memory.data)
         
         # Clean up the temporary files
         cleanup_files(file_path, binary_file_path)
