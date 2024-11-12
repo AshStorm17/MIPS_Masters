@@ -127,6 +127,7 @@ def main_2():
                 styled_df.index.name = "Instructions"
                 st.dataframe(styled_df)
 
+        
         st.write("Pipeline execution completed.")
 
         # Clean up the temporary files
