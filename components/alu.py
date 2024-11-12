@@ -46,9 +46,9 @@ class ALU:
             case "100010": # sub
                 ans = signedBin(signedVal(opr1) - signedVal(opr2))
             case "100100": # and
-                ans = signedVal(opr1) & signedVal(opr2)
+                ans = signedBin(signedVal(opr1) & signedVal(opr2))
             case "100101": # or
-                ans = signedVal(opr1) | signedVal(opr2)
+                ans = signedBin(signedVal(opr1) | signedVal(opr2))
             case "101010": #slt 
                 ans = format(int(signedVal(opr1) < signedVal(opr2)), "032b")
             case "101011": # sltu
