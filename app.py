@@ -138,8 +138,8 @@ def main_2():
         st.write("Pipeline execution completed.")
         
         # Move memory component view to the sidebar
-        with st.sidebar.expander("IO_Memory"):
-            st.write("Memory Data:")
+        with st.sidebar.expander("Memory contents"):
+            
             st.write(pipeline.memory.data)
         
         # Clean up the temporary files
