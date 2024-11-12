@@ -1,8 +1,6 @@
 class Memory:
     def __init__(self, initialise=False):
         self.data = [""]*4*1024 # 1024 words # byte addressing
-        self.io_base = 2000
-        self.io_size = 40
         if initialise==True:
             self.data = [format(0, '008b')]*4*1024 # initialise with all 0's
             # test data filled for loading
@@ -10,13 +8,8 @@ class Memory:
             self.data[1001] = "00001111"
             self.data[1002] = "00000010"
             self.data[1003] = "00000001"
-    def is_io_address(self, address):
-        
-        return self.io_base <= address < self.io_base + self.io_size
-    # stores a byte
     def store(self, addr, value):
-        if (self.is_io_address(addr)):
-            print(value, " ------Output printed because value stored in I/O------") 
+        
         self.data[addr]=value
 
     # loads a byte
