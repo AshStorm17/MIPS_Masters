@@ -1,3 +1,12 @@
+import streamlit as st
+import pandas as pd
+from pipeline import MIPSPipeline
+from utils.assembler import MIPSAssembler
+from components.alu import signedVal
+import tempfile
+import os
+
+
 def main():
     st.title("MIPS Pipeline Simulator")
     st.write("Upload a MIPS assembly file to simulate the pipeline stages.")
