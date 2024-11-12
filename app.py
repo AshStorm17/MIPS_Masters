@@ -22,7 +22,7 @@ def main_2():
     file_path = None
     binary_file_path = None
 
-    if code_format=="MIPS Assembly":
+    if code_format == "MIPS Assembly":
         # Option to upload MIPS assembly file
         upload_option = st.radio("Select an option", ("Upload MIPS file", "Enter MIPS code"))
         
@@ -67,7 +67,7 @@ def main_2():
     
     if st.button("Run Pipeline"):
         # Initialize the MIPS pipeline using the binary file path
-        if code_format=="MIPS Assembly" and file_path:
+        if code_format == "MIPS Assembly" and file_path:
             assembler = MIPSAssembler()
             test_instructions = assembler.parse_asm(file_path)
 
@@ -92,7 +92,7 @@ def main_2():
         pipeline = MIPSPipeline(binary_file_path)
         st.subheader("MIPS Pipeline Execution (Cycle-by-Cycle):")
         # Execute the pipeline cycle-by-cycle
-        register_states,io_memory,cycle_state = pipeline.run_pipeline()
+        register_states, io_memory, cycle_state = pipeline.run_pipeline()
 
         # Convert the list of register states into a DataFrame
         all_reg_names = ["$0", "$at", "$v0", "$v1", "$a0", "$a1", "$a2", "$a3",
@@ -108,7 +108,7 @@ def main_2():
             register_states_per_cycle.append(all_reg_values)
         index_labels = ['Initial Value'] + [f'I{i}' for i in range(1, len(register_states))]
         # Create a DataFrame from the collected register states
-        register_df = pd.DataFrame(register_states_per_cycle, columns=all_reg_names,index=index_labels)
+        register_df = pd.DataFrame(register_states_per_cycle, columns=all_reg_names, index=index_labels)
 
         # Display the register states over cycles
         st.write("Register States Over Cycles:")
@@ -129,7 +129,6 @@ def main_2():
         st.write("Cycle-wise execution")
 
         st.dataframe(cycle_state, use_container_width=True)
-        st.write('IO_Memory')
 
         container = st.container()
         with container:
@@ -138,9 +137,9 @@ def main_2():
         
         st.write("Pipeline execution completed.")
         
-        with st.expander("View Memory Component"):
+        # Move memory component view to the sidebar
+        with st.sidebar.expander("IO_Memory"):
             st.write("Memory Data:")
-            
             st.write(pipeline.memory.data)
         
         # Clean up the temporary files
