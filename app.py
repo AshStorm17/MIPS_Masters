@@ -76,7 +76,7 @@ def main_2():
             format_code = assembler.format_machine_codes(machine_codes)
 
             # Display the MIPS Assembly to Machine Code Conversion
-            st.write("MIPS Assembly to Machine Code Conversion:")
+            st.subheader("MIPS Assembly to Machine Code Conversion:")
             st.write("-" * 60)
             for code in format_code:
                 st.write(code)
@@ -92,7 +92,7 @@ def main_2():
         pipeline = MIPSPipeline(binary_file_path)
         st.subheader("MIPS Pipeline Execution (Cycle-by-Cycle):")
         # Execute the pipeline cycle-by-cycle
-        register_states = pipeline.run_pipeline()
+        register_states,io_memory,cycle_state = pipeline.run_pipeline()
 
         # Convert the list of register states into a DataFrame
         all_reg_names = ["$0", "$at", "$v0", "$v1", "$a0", "$a1", "$a2", "$a3",
@@ -126,10 +126,17 @@ def main_2():
                 styled_df = register_df.iloc[:, start_idx:end_idx].copy()
                 styled_df.index.name = "Instructions"
                 st.dataframe(styled_df)
+        st.write("Cycle-wise execution")
 
-        
+        st.dataframe(cycle_state, use_container_width=True)
+        st.write('IO_Memory')
+
+        container = st.container()
+        with container:
+            for entry in io_memory:
+                st.markdown(f"- {entry}")
         st.write("Pipeline execution completed.")
-
+        
         # Clean up the temporary files
         cleanup_files(file_path, binary_file_path)
 

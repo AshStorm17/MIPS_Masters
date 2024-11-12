@@ -6,6 +6,7 @@ from components.io import MemoryMappedIO
 from instructions import Instruction
 from parser import MIPSParser
 from hazard import HazardManager
+import pandas as pd
 
 class MIPSPipeline:
     def __init__(self, file_path):
@@ -13,6 +14,7 @@ class MIPSPipeline:
         self.io = MemoryMappedIO()
         self.memory = Memory(initialise=True)
         self.stall = False
+        self.curr_state=['---']*5
         mips_parser = MIPSParser()
         instructions_parsed = mips_parser.parse_mips_file(file_path)
         for insts in instructions_parsed:
@@ -59,6 +61,8 @@ class MIPSPipeline:
             else:
                 self.pipeline_registers['IF_ID'] = None
                 return  # Exit when end of instructions is reached
+       
+            
     
     def decode_stage(self, fetched_data):
         """Decodes instructions and passes them to the execute stage."""
@@ -131,9 +135,11 @@ class MIPSPipeline:
             # Send the decoded values to the ID_EX register
             self.pipeline_registers['ID_EX'] = decoded_values
             print(f"Decode Stage: Instruction decoded with PC {fetched_data['PC']}")
+            self.curr_state[1]=f"Instruction decoded with PC {fetched_data['PC']}"
             #self.pipeline_registers['IF_ID'] = None
         else:
             self.pipeline_registers['ID_EX'] = None
+            self.curr_state[1]='---'
     
     def execute_stage(self, decoded_data):
         """Executes instructions and updates the EX/MEM pipeline register."""
@@ -167,6 +173,7 @@ class MIPSPipeline:
                 src2 = self.hazard_manager.get_forwarded_value(rt, forward_b, ex_mem_data, mem_wb_data)
                 if inst['funct'] == '001100':
                     print(f"Execute Stage: Halt condition met for instruction at PC {decoded_data['PC']}")
+                    self.curr_state[2]=f"Halt condition met for instruction at PC {decoded_data['PC']}"
                     # Set the halt flag and clear the pipeline
                     self.halt.value = 1
                     self.pipeline_registers["IF_ID"] = None
@@ -176,6 +183,7 @@ class MIPSPipeline:
                 elif inst['funct'] == '001000':  # jr
                     if rs == 31 and src1 == 0:
                         print(f"Execute Stage: Halt condition met for instruction at PC {decoded_data['PC']}")
+                        self.curr_state[2]=f"Halt condition met for instruction at PC {decoded_data['PC']}"
                         # Set the halt flag and clear the pipeline
                         self.halt.value = 1
                         self.pipeline_registers["IF_ID"] = None
@@ -247,9 +255,11 @@ class MIPSPipeline:
             # Put the result in the EX_MEM register
             self.pipeline_registers['EX_MEM'] = result
             print(f"Execute Stage: Executed instruction with result {result}")
+            self.curr_state[2]=f"Executed instruction with result: {result}"
             #self.pipeline_registers['ID_EX'] = None
         else:
             self.pipeline_registers['EX_MEM'] = None
+            self.curr_state[2]=f"---"
 
     def memory_access_stage(self, execute_data):
         """Handles memory operations and passes results to write-back stage."""
@@ -322,9 +332,11 @@ class MIPSPipeline:
 
             self.pipeline_registers['MEM_WB'] = memory_data
             print(f"Memory Access Stage: Instruction memory access with data {memory_data}")
+            self.curr_state[3]=f"Instruction memory access with data {memory_data}"
             #self.pipeline_registers['EX_MEM'] = None
         else:
             self.pipeline_registers['MEM_WB'] = None
+            self.curr_state[3]="---"
 
     def write_back_stage(self, memory_data):
         """Writes data back to registers if necessary."""
@@ -359,7 +371,10 @@ class MIPSPipeline:
             # Store the register state
             self.register_states.append(self.registers.reg.copy())
             print(f"Write-Back Stage: Write back completed for instruction {memory_data}")
+            self.curr_state[4]=f"Write back completed for instruction {memory_data}"
             #self.pipeline_registers['MEM_WB'] = None
+        else:
+            self.curr_state[4]=f"---"
 
     def empty_pipeline(self, halt, pipregs):
         if halt.value==0:
@@ -372,14 +387,21 @@ class MIPSPipeline:
     def run_pipeline(self):
         """Starts and manages pipeline stages as parallel processes."""
         cycle = 1
+        columns = ["fetch", "decode", "execute", "memory_access", "writeBack"]
+        cycle_states=pd.DataFrame(columns=columns)
+        cycle_states.loc['Initial State']=self.curr_state
         while not self.empty_pipeline(self.halt, self.pipeline_registers):
             print("Cycle ", cycle)
             # Get the data from pipeline registers
+            
             fetched_data = self.pipeline_registers["IF_ID"]
             decoded_data = self.pipeline_registers["ID_EX"] 
             execute_data = self.pipeline_registers["EX_MEM"]
             memory_data = self.pipeline_registers["MEM_WB"]
             stall = self.stall
+            
+            self.curr_state[0]=f"Instruction at PC {self.PC.value} fetched"
+            
             # Initialize processes for each stage
             if not stall:
                 fetch_process = multiprocessing.Process(target=self.fetch_stage)
@@ -401,7 +423,11 @@ class MIPSPipeline:
                 decode_process.join()
                 execute_process.join()
             mem_access_process.join()
-            write_back_process.join() 
+            write_back_process.join()
+            if (self.halt.value==1):
+                self.curr_state[0]='---'
+            cycle_states.loc[f"Cycle {cycle}"]= self.curr_state
+            
             if stall == True:
                 self.stall = False
                 self.pipeline_registers["EX_MEM"] = None
@@ -424,7 +450,7 @@ class MIPSPipeline:
             print() 
         print("-----------------------------")
 
-        return self.register_states, self.io.io_memory
+        return self.register_states, self.io.io_memory,cycle_states
 
 if __name__ == "__main__":
     mips_pipeline = MIPSPipeline(file_path="tests/lh_lbu_test.txt")
