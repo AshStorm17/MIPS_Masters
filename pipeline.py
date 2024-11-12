@@ -40,22 +40,6 @@ class MIPSPipeline:
         self.register_states = manager.list()
         self.register_states.append(self.registers.reg.copy())
 
-    def is_halt_instruction(self, IR):
-        """Check if an instruction is a halt instruction (`syscall` or `jr $ra`)."""
-        opcode = int(IR[:6], 2)
-        func = int(IR[-6:], 2)
-
-        if opcode == 0:  # This is an R-type instruction
-            if func == 12:  # syscall
-                return True
-            elif func == 8:  # jr (jump register)
-                rs = int(IR[6:11], 2)  # Extract the rs field (source register)
-                if rs == 31:  # Check if it's $ra (register 31)
-                    ra = self.registers.read(31)  # Read the $ra register
-                    if ra == 0:  # If $ra holds 0, it indicates end
-                        return True
-        return False
-    
     def fetch_stage(self):
         """Fetches instructions from memory."""
         if self.halt.value == 1:
@@ -67,12 +51,6 @@ class MIPSPipeline:
                 for i in range(4):
                     instruction_data += self.memory.load(self.PC.value + i)
                 IR = instruction_data
-                if self.is_halt_instruction(IR):
-                    self.pipeline_registers['IF_ID'] = None
-                    print(f"Fetch Stage: Instruction at PC {self.PC.value} fetched, Halt instruction detected")
-                    self.halt.value = 1
-                    self.PC.value += 4
-                    return  # Exit when halt instruction is reached
                 self.pipeline_registers['IF_ID'] = {'PC': self.PC.value , 'IR': IR}
                 print(f"Fetch Stage: Instruction at PC {self.PC.value} fetched")
                 self.PC.value += 4
@@ -176,6 +154,7 @@ class MIPSPipeline:
             ex_mem_data = self.pipeline_registers['EX_MEM']
             mem_wb_data = self.pipeline_registers['MEM_WB']
 
+            
             # Simulated ALU operations based on instruction type
             if type == 0:  # R-type
                 rs = int(inst['rs'], 2)
@@ -184,11 +163,31 @@ class MIPSPipeline:
                 # Get forwarded values if needed
                 src1 = self.hazard_manager.get_forwarded_value(rs, forward_a, ex_mem_data, mem_wb_data)
                 src2 = self.hazard_manager.get_forwarded_value(rt, forward_b, ex_mem_data, mem_wb_data)
-                if inst['funct'] == '001000':  # jr
+                if inst['funct'] == '001100':
+                    print(f"Execute Stage: Halt condition met for instruction at PC {decoded_data['PC']}")
+                    # Set the halt flag and clear the pipeline
+                    self.halt.value = 1
+                    self.pipeline_registers["IF_ID"] = None
+                    self.pipeline_registers["ID_EX"] = None
+                    self.pipeline_registers['EX_MEM'] = None
+                    return
+                elif inst['funct'] == '001000':  # jr
+                    if rs == 31 and src1 == 0:
+                        print(f"Execute Stage: Halt condition met for instruction at PC {decoded_data['PC']}")
+                        # Set the halt flag and clear the pipeline
+                        self.halt.value = 1
+                        self.pipeline_registers["IF_ID"] = None
+                        self.pipeline_registers["ID_EX"] = None
+                        self.pipeline_registers['EX_MEM'] = None
+                        return
                     with self.pc_lock:
                         self.PC.value = src1
+                    self.pipeline_registers["IF_ID"] = None
+                    self.pipeline_registers["ID_EX"] = None
+                    result['ALU_result'] = None
+                    result['RD'] = None
                 elif inst['funct'][:3] == "000":  # Shift operations
-                    result['ALU_result'] = self.alu.alu_shift(inst['funct'], src1, int(inst['shamt'], 2))
+                    result['ALU_result'] = self.alu.alu_shift(inst['funct'], src2, int(inst['shamt'], 2))
                     result['RD'] = int(inst['rd'], 2)
                 else:  # Arithmetic/logical operations
                     result['ALU_result'] = self.alu.alu_arith(inst['funct'], src1, src2)
@@ -227,19 +226,21 @@ class MIPSPipeline:
 
             elif type == 2:  # J-type
                 addr = int(inst['address'], 2)
-                if inst['op'][3:] == '010':  # j (jump)
+                if inst['op'][3:] == '010':
                     with self.pc_lock:
-                        self.PC.value = (self.PC.value & 0xF0000000) | (addr << 2)
+                        self.PC.value = self.PC.value + (addr<<2) - 4
                     self.pipeline_registers["IF_ID"] = None
                     self.pipeline_registers["ID_EX"] = None
-                    result=None
+                    result['ALU_result'] = None
+                    result['RD'] = None
                 elif inst['op'][3:] == '011':  # jal (jump and link)
-                    self.registers.write(31, self.PC.value + 4)
+                    result['ALU_result'] = self.PC.value - 4
+                    result['RD'] = 31
                     with self.pc_lock:
-                        self.PC.value = (self.PC.value & 0xF0000000) | (addr << 2)
+                        self.PC.value = self.PC.value + (addr<<2) - 4
                     self.pipeline_registers["IF_ID"] = None
                     self.pipeline_registers["ID_EX"] = None
-                    result=None
+                    
             
             # Put the result in the EX_MEM register
             self.pipeline_registers['EX_MEM'] = result
@@ -340,7 +341,10 @@ class MIPSPipeline:
                         case "101": #lhu (unsigned)
                             self.registers.write(reg_dst, format(memory_data['Mem_data'], '032b'))
 
-                elif type in [0, 1]:  # R-type or I-type ALU instruction
+                elif (type in [0, 1]) :  # R-type or I-type ALU instruction
+                    self.registers.write(reg_dst, signedBin(memory_data['ALU_result']))
+                
+                elif type == 2 and inst['op'][3:] == '011':
                     self.registers.write(reg_dst, signedBin(memory_data['ALU_result']))
 
             # Store the register state
