@@ -2,6 +2,7 @@ import multiprocessing
 from components.registers import Registers
 from components.alu import ALU, signedVal, signedBin
 from components.memory import Memory
+from components.io import MemoryMappedIO
 from instructions import Instruction
 from parser import MIPSParser
 from hazard import HazardManager
@@ -9,6 +10,7 @@ from hazard import HazardManager
 class MIPSPipeline:
     def __init__(self, file_path):
         # Initialize components
+        self.io = MemoryMappedIO()
         self.memory = Memory(initialise=True)
         self.stall = False
         mips_parser = MIPSParser()
@@ -117,7 +119,7 @@ class MIPSPipeline:
             }
 
             if not inst.type == 2:  # RT for R and I types
-                id_ex_data['RT'] = self.registers.read(int(fields['rt'], 2))
+                id_ex_data['RT'] = int(fields['rt'], 2)
                 decoded_values['RT'] = id_ex_data['RT']
             
             # Add Immediate or Address if they exist
@@ -207,7 +209,7 @@ class MIPSPipeline:
                     result['RD'] = int(inst['rt'], 2)
                 elif inst['op'][:3] == "101":  # Store
                     result['ALU_result'] = self.alu.giveAddr(src1, imm)
-                    result['RT'] = decoded_data.get('RT', 0)  # Default to 0 if not present
+                    result['RT'] = src2  # Default to 0 if not present
                 elif inst['op'][:3] == "000": # beq, bne (Conditional Branch instructions)
                     if (imm & 0x8000): #sign extend
                         imm= imm | 0xFFFF0000
@@ -265,7 +267,7 @@ class MIPSPipeline:
 
             if type == 1 and inst['op'][:3] == "100":  # Load instruction
                 address = execute_data['ALU_result']
-
+                
                 # op[3:6] = 000 | 001 | 011 | 100 | 101
                 # load    = lb  | lh  | lw  | lbu | lhu
 
@@ -291,17 +293,24 @@ class MIPSPipeline:
             elif type == 1 and inst['op'][:3] == "101":  # Store instruction
                 mem_addr = execute_data['ALU_result']
                 store_data32 = signedBin(execute_data['RT'])
+                
+                to_output = False
+                if (self.io.is_io_address(mem_addr)):
+                    to_output = True
 
                 # op[3:6] = 000 | 001 | 011
                 # store   = sb  | sh  | sw
 
                 match inst['op'][3:6]:
                     case "000": #sb
+                        if (to_output): self.io.io_memory.append(store_data32[24:])
                         self.memory.store(mem_addr, store_data32[24:])
                     case "001": #sh
+                        if (to_output): self.io.io_memory.append(store_data32[16:])
                         self.memory.store(mem_addr, store_data32[16:24])
                         self.memory.store(mem_addr + 1, store_data32[24:])
                     case "011": #sw
+                        if (to_output): self.io.io_memory.append(store_data32)
                         for i in range(4):
                             self.memory.store(mem_addr + i, store_data32[8*i:8*(i+1)])  
                 
@@ -415,7 +424,7 @@ class MIPSPipeline:
             print() 
         print("-----------------------------")
 
-        return self.register_states
+        return self.register_states, self.io.io_memory
 
 if __name__ == "__main__":
     mips_pipeline = MIPSPipeline(file_path="tests/lh_lbu_test.txt")
